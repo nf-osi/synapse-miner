@@ -1,5 +1,0 @@
-synapse_id,document,context
-syn1234567,test_articles.xml.gz,".</body></article>
-<article><front><title>Second article</title></front><body>This article mentions syn1234567 as a Synapse ID.</body></article>
-</articles>
-"
