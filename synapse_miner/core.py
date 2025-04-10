@@ -30,13 +30,13 @@ logger = logging.getLogger("synapse_miner.core")
 def process_article(article_xml: str, context_size: int) -> Tuple[Optional[str], List[Dict]]:
     """Process a single article in a worker process."""
     findings = []
+    pmc_id = None
     
     try:
         # Parse XML
         root = ET.fromstring(article_xml)
         
         # Extract PMC ID
-        pmc_id = None
         for article_id in root.findall(".//article-id"):
             if article_id.get("pub-id-type") in ["pmc", "pmcid"]:
                 pmc_id = article_id.text
@@ -225,7 +225,7 @@ class SynapseMiner:
                     end = buffer.find('</article>', start) + len('</article>')
                     
                     if start == -1 or end == -1:
-                        break
+                                    break
                         
                     yield buffer[start:end]
                     buffer = buffer[end:]
@@ -307,7 +307,7 @@ class SynapseMiner:
         if not os.path.exists(file_path):
             logger.error(f"File does not exist: {file_path}")
             return []
-            
+
         is_gzipped = file_path.lower().endswith('.gz')
         findings = self._process_xml_file(file_path, is_gzipped)
         
@@ -457,7 +457,6 @@ class SynapseMiner:
                         # Update progress with number of Synapse IDs found
                         progress.update(task, 
                                      description=f"Processing files (found {len(all_findings)} Synapse IDs)")
-                        
                     except Exception as e:
                         logger.error(f"Error processing {file_url}: {e}")
                         continue

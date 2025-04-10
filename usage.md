@@ -51,6 +51,31 @@ You can combine options to process a specific number of files starting from a pa
 synapse-miner http -u https://europepmc.org/ftp/oa/ -o results.csv -s PMC3000001_PMC3010000.xml.gz -m 2
 ```
 
+## Combining Results Files
+
+When processing multiple XML files, the miner creates separate batch files for each XML file. To combine these into a single CSV file:
+
+```bash
+synapse-miner combine -o combined_results.csv
+```
+
+This will:
+1. Search for all batch files matching the pattern `results.csv.*.csv` in the current directory
+2. Combine them into a single file named `combined_results.csv`
+3. Remove duplicate entries
+4. Provide statistics about the combined results
+
+### Advanced Combine Options
+
+You can specify a different directory or file pattern:
+
+```bash
+synapse-miner combine -o combined_results.csv -d /path/to/results -p "*.csv"
+```
+
+- `-d, --directory`: Directory containing batch files (default: current directory)
+- `-p, --pattern`: Glob pattern to match batch files (default: results.csv.*.csv)
+
 ## Output Files
 
 The miner generates two types of output files:
@@ -104,6 +129,7 @@ You can also use the miner programmatically:
 
 ```python
 from synapse_miner import SynapseMiner
+from synapse_miner.utils import combine_results
 
 # Initialize miner
 miner = SynapseMiner()
@@ -114,6 +140,13 @@ miner.process_http_files(
     output_path="results.csv",
     start_from="PMC3000001_PMC3010000.xml.gz",
     max_files=2
+)
+
+# Combine results from batch files
+combine_results(
+    output_path="combined_results.csv",
+    directory="./",
+    pattern="results.csv.*.csv"
 )
 ```
 

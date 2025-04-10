@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from .core import SynapseMiner
+from synapse_miner.utils import combine_results
 
 def setup_logging(verbose: bool = False) -> None:
     """Set up logging configuration."""
@@ -64,14 +65,13 @@ def main() -> None:
     )
     http_parser.add_argument(
         "-u", "--url",
-        default="https://europepmc.org/ftp/oa/",
-        help="Base URL of the HTTP server (default: https://europepmc.org/ftp/oa/)"
+        required=True,
+        help="Base URL of the HTTP server"
     )
     http_parser.add_argument(
         "-o", "--output",
-        type=Path,
-        default="results.csv",
-        help="Path to save results (default: results.csv)"
+        required=True,
+        help="Path to save results"
     )
     http_parser.add_argument(
         "-s", "--start-from",
@@ -81,6 +81,26 @@ def main() -> None:
         "-m", "--max-files",
         type=int,
         help="Maximum number of files to process"
+    )
+    
+    # Combine command
+    combine_parser = subparsers.add_parser(
+        "combine",
+        help="Combine multiple batch CSV files into one"
+    )
+    combine_parser.add_argument(
+        "-o", "--output",
+        required=True,
+        help="Path to save combined results"
+    )
+    combine_parser.add_argument(
+        "-d", "--directory",
+        help="Directory containing batch files (default: current directory)"
+    )
+    combine_parser.add_argument(
+        "-p", "--pattern",
+        default="results.csv.*.csv",
+        help="Glob pattern to match batch files (default: results.csv.*.csv)"
     )
     
     args = parser.parse_args()
@@ -120,6 +140,10 @@ def main() -> None:
                 start_from=args.start_from,
                 max_files=args.max_files
             )
+            
+        elif args.command == "combine":
+            # Combine results
+            combine_results(args.output, args.directory, args.pattern)
             
         else:
             parser.print_help()

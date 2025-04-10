@@ -19,6 +19,7 @@ synapse_miner.egg-info/entry_points.txt
 synapse_miner.egg-info/requires.txt
 synapse_miner.egg-info/top_level.txt
 synapse_miner/utils/__init__.py
+synapse_miner/utils/data_utils.py
 synapse_miner/utils/file_utils.py
 synapse_miner/utils/security.py
 synapse_miner/utils/text_processing.py
