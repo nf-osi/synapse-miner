@@ -1,51 +1,138 @@
 # Usage Guide
 
-This guide explains how to use the Synapse ID Mining package to extract Synapse IDs from scientific articles.
+## Python API
 
-## Basic Usage
+### Basic Usage
 
-### From the Command Line
-
-The Synapse ID Mining package provides a command-line interface (CLI) for convenient usage:
-
-```bash
-# Process a single PDF file
-synapse-miner path/to/article.pdf
-
-# Process a directory containing multiple articles
-synapse-miner path/to/articles/
-
-# Save results to a specific file
-synapse-miner path/to/articles/ -o results.csv
-
-# Save results in JSON format
-synapse-miner path/to/articles/ -o results.json -f json
-```
-
-### From Python
-
-The package can also be used programmatically in Python:
+You can use the Synapse Miner directly in your Python code:
 
 ```python
 from synapse_miner import SynapseMiner
 
-# Initialize the miner
-miner = SynapseMiner(context_size=100, deduplication=True)
+# Create a miner instance
+miner = SynapseMiner()
 
 # Process a single file
-findings = miner.process_file("path/to/article.pdf")
+results = miner.process_file("path/to/article.pdf")
+print(f"Found {len(results)} findings")
 
 # Process a directory
 results = miner.process_directory("path/to/articles/")
+print(f"Found results for {len(results)} files")
+
+# Save the results
+all_findings = [finding for findings in results.values() for finding in findings]
+miner.save_results(all_findings, "results.csv", "csv")
+```
+
+### Advanced Configuration
+
+You can configure the Synapse Miner with various options:
+
+```python
+from synapse_miner import SynapseMiner, SynapseMinerConfig
+
+# Create a configuration object
+config = SynapseMinerConfig()
+
+# Set configuration options
+config.set("context_size", 150)  # Characters of context around each Synapse ID
+config.set("deduplication", True)  # Deduplicate identical Synapse IDs within documents
+config.set("batch_size", 50)  # Number of files to process before saving interim results
+config.set("max_workers", 4)  # Number of parallel worker threads
+config.set("allowed_extensions", [".pdf", ".txt", ".xml"])  # File types to process
+
+# Create a miner with the configuration
+miner = SynapseMiner(config)
+
+# Process files with the configuration
+results = miner.process_directory("path/to/articles/")
 
 # Save results
-miner.save_results_to_csv("results.csv")
-# or
-miner.save_results_to_json("results.json")
+all_findings = [finding for findings in results.values() for finding in findings]
+miner.save_results(all_findings, "results.csv", "csv")
+```
 
-# Generate and print summary
-summary = miner.generate_summary()
-print(f"Found {summary['unique_synapse_ids']} unique Synapse IDs")
+### Processing Large Datasets
+
+For large datasets, you can use batch processing:
+
+```python
+from synapse_miner import SynapseMiner, SynapseMinerConfig
+
+# Configure for batch processing
+config = SynapseMinerConfig()
+config.set("batch_size", 100)
+config.set("max_workers", 8)
+
+# Create a miner
+miner = SynapseMiner(config)
+
+# Process directory - results will be saved in batches
+results = miner.process_directory("path/to/large_dataset/")
+
+# Combine all batch files into a single output
+miner.combine_batch_files("final_results.csv", "csv")
+```
+
+### Processing XML Files from Europe PMC
+
+To process XML files from Europe PMC:
+
+```python
+from synapse_miner import process_ftp_files
+
+# Process files from Europe PMC
+results = process_ftp_files(
+    max_files=10,  # Process only 10 files
+    output_path="europe_pmc_results.csv",
+    show_progress=True
+)
+```
+
+## Command-line Interface
+
+### Basic Usage
+
+Process a single file:
+
+```bash
+synapse-miner local path/to/file.pdf -o results.csv
+```
+
+Process a directory:
+
+```bash
+synapse-miner local path/to/directory -o results.csv
+```
+
+### Advanced Options
+
+```bash
+# Process a directory with custom context size and specific file types
+synapse-miner local path/to/directory -o results.csv -c 200 --extensions .pdf .txt
+
+# Disable deduplication of Synapse IDs
+synapse-miner local path/to/directory -o results.csv --no-deduplication
+
+# Enable verbose logging
+synapse-miner local path/to/directory -o results.csv -v
+
+# Use multiple worker threads
+synapse-miner local path/to/directory -o results.csv --max-workers 8
+```
+
+### Processing Files from Europe PMC
+
+```bash
+# Process 5 files from Europe PMC
+synapse-miner ftp --max-files 5 -o europe_pmc_results.csv
+
+# Process specific files matching a pattern
+synapse-miner ftp --pattern "PMC123.*\.xml\.gz" -o results.csv
+
+# Process files with more context
+synapse-miner ftp --max-files 10 -o results.csv -c 200
 ```
 
 ## Convenience Functions
@@ -189,3 +276,5 @@ plt.xlabel('Synapse ID')
 plt.ylabel('Frequency')
 plt.tight_layout()
 plt.savefig('top_synapse_ids.png')
+
+```

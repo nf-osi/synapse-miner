@@ -56,26 +56,3 @@ def read_text_file(file_path: str) -> str:
     except Exception as e:
         logger.error(f"Error reading text file {file_path}: {str(e)}")
         return ""
-
-def get_file_list(directory_path: str, extensions: list = None) -> list:
-    """
-    Get a list of files with the specified extensions from a directory.
-    
-    Args:
-        directory_path: Path to the directory
-        extensions: List of file extensions to include (e.g., ['.pdf', '.txt'])
-        
-    Returns:
-        List of file paths
-    """
-    import glob
-    
-    if not extensions:
-        extensions = ['.pdf', '.txt', '.xml', '.html']
-        
-    all_files = []
-    for ext in extensions:
-        files = glob.glob(os.path.join(directory_path, f"*{ext}"))
-        all_files.extend(files)
-        
-    return all_files

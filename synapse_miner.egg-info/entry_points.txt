@@ -1,0 +1,2 @@
+[console_scripts]
+synapse-miner = synapse_miner.cli:main

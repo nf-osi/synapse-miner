@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Archiving and Interchange DTD v1.2 20190208//EN" "JATS-archivingd1.dtd">
+<article xmlns:xlink="http://www.w3.org/1999/xlink" article-type="research-article">
+  <front>
+    <journal-meta>
+      <journal-id journal-id-type="publisher-id">Test Journal</journal-id>
+      <journal-title-group>
+        <journal-title>Journal of Synapse Testing</journal-title>
+      </journal-title-group>
+    </journal-meta>
+    <article-meta>
+      <article-id pub-id-type="pmc">PMC12345678</article-id>
+      <title-group>
+        <article-title>Testing Synapse ID Extraction with syn1234567</article-title>
+      </title-group>
+      <abstract>
+        <p>This is a test abstract with a Synapse ID: syn7654321.</p>
+      </abstract>
+    </article-meta>
+  </front>
+  <body>
+    <sec>
+      <title>Introduction</title>
+      <p>For this test we use Synapse IDs syn1111111 and syn2222222.</p>
+    </sec>
+    <sec>
+      <title>Methods</title>
+      <p>Data available at syn3333333.</p>
+      <table-wrap>
+        <caption>
+          <p>Table with Synapse ID syn4444444</p>
+        </caption>
+        <table>
+          <tr>
+            <td>Dataset</td>
+            <td>Synapse ID</td>
+          </tr>
+          <tr>
+            <td>Gene Expression</td>
+            <td>syn5555555</td>
+          </tr>
+        </table>
+      </table-wrap>
+    </sec>
+  </body>
+  <back>
+    <ref-list>
+      <ref>
+        <mixed-citation>Smith J, et al. (2020) Dataset available at syn6666666.</mixed-citation>
+      </ref>
+    </ref-list>
+  </back>
+</article> 
