@@ -14,7 +14,8 @@ A Python package for mining Synapse IDs from scientific articles in Europe PMC's
 ## Installation
 
 ```bash
-pip install synapse-miner
+pip install git+https://github.com/nf-osi/synapse-miner.git
+
 ```
 
 ## Usage
