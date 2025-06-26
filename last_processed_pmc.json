@@ -1,0 +1,5 @@
+{
+  "last_processed_pmc_id": null,
+  "updated_at": null,
+  "description": "This file tracks the last processed PMC ID for the weekly mining workflow. It will be automatically updated by the GitHub Actions workflow."
+}

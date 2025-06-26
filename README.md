@@ -10,6 +10,7 @@ A Python package for mining Synapse IDs from scientific articles in Europe PMC's
 - Saves results incrementally to prevent data loss
 - Provides progress tracking during download and processing
 - Supports starting from a specific file and limiting the number of files processed
+- **NEW**: Automated weekly workflow with Synapse integration for continuous processing
 
 ## Installation
 
@@ -19,6 +20,24 @@ pip install git+https://github.com/nf-osi/synapse-miner.git
 ```
 
 ## Usage
+
+### Automated Weekly Workflow (NEW)
+
+For continuous processing of Europe PMC with Synapse integration:
+
+```bash
+# Set up Synapse credentials
+export SYNAPSE_USERNAME="your_username"
+export SYNAPSE_API_KEY="your_api_key"
+
+# Run automated workflow
+synapse-miner workflow \
+  --folder-id syn66046437 \
+  --table-id syn66047339 \
+  --verbose
+```
+
+See [docs/workflow.md](docs/workflow.md) for detailed setup instructions and GitHub Actions configuration.
 
 ### Command Line Interface
 
