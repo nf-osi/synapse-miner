@@ -17,12 +17,12 @@ The workflow automatically:
 
 Add these secrets to your GitHub repository settings:
 
-- `SYNAPSE_PAT`: Your Synapse Personal Access Token
+- `SYNAPSE_PAT`: Your Synapse Personal Access Token (get from https://www.synapse.org/#!PersonalAccessTokens:)
 
 ### Configuration
 
 The workflow is configured to:
-- **Schedule**: Run every Monday at 9:00 AM UTC
+- **Schedule**: Run every Monday at 10:00 PM UTC (to avoid Synapse stack migration conflicts)
 - **Synapse Folder**: syn66046437 (for individual batch CSV files)
 - **Synapse Table**: syn66047339 (for aggregated results)
 - **Tracking File**: `last_processed_pmc.json` (stored in the repository)

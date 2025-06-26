@@ -2,8 +2,8 @@ name: Weekly PMC Mining Workflow
 
 on:
   schedule:
-    # Run every Monday at 9:00 AM UTC
-    - cron: '0 9 * * 1'
+    # Run every Monday at 10:00 PM UTC (to avoid Synapse stack migration conflicts)
+    - cron: '0 22 * * 1'
   workflow_dispatch:
     # Allow manual triggering
     inputs:
