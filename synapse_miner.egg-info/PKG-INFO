@@ -10,8 +10,6 @@ Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.6
 Description-Content-Type: text/markdown
-Requires-Dist: pandas
-Requires-Dist: tqdm
 
 # Synapse ID Miner
 
@@ -29,7 +27,8 @@ A Python package for mining Synapse IDs from scientific articles in Europe PMC's
 ## Installation
 
 ```bash
-pip install synapse-miner
+pip install git+https://github.com/nf-osi/synapse-miner.git
+
 ```
 
 ## Usage

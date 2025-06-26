@@ -10,6 +10,7 @@ A Python package for mining Synapse IDs from scientific articles in Europe PMC's
 - Saves results incrementally to prevent data loss
 - Provides progress tracking during download and processing
 - Supports starting from a specific file and limiting the number of files processed
+- Automated weekly workflow to send results to synapse
 
 ## Installation
 
@@ -19,6 +20,7 @@ pip install git+https://github.com/nf-osi/synapse-miner.git
 ```
 
 ## Usage
+
 
 ### Command Line Interface
 

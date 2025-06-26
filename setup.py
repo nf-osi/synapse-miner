@@ -14,6 +14,7 @@ setup(
     install_requires=[
         "pandas",
         "tqdm",
+        "synapseclient>=4.0.0",
     ],
     entry_points={
         "console_scripts": [
