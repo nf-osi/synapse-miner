@@ -20,21 +20,20 @@ except ImportError:
 class SynapseUploader:
     """Handles uploading results to Synapse."""
     
-    def __init__(self, username: Optional[str] = None, api_key: Optional[str] = None):
+    def __init__(self, pat: Optional[str] = None):
         """
         Initialize Synapse client.
         
         Args:
-            username: Synapse username (optional, can use environment vars)
-            api_key: Synapse API key (optional, can use environment vars)
+            pat: Synapse Personal Access Token (optional, can use environment vars)
         """
         if not SYNAPSE_AVAILABLE:
             raise ImportError("synapseclient is required for Synapse integration")
             
         self.syn = synapseclient.Synapse()
         try:
-            if username and api_key:
-                self.syn.login(email=username, apiKey=api_key)
+            if pat:
+                self.syn.login(authToken=pat)
             else:
                 # Try to login using cached credentials or environment variables
                 self.syn.login()

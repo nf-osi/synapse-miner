@@ -148,12 +148,8 @@ def main() -> None:
             help="Maximum number of files to process (for testing)"
         )
         workflow_parser.add_argument(
-            "--synapse-username",
-            help="Synapse username (can also use SYNAPSE_USERNAME env var)"
-        )
-        workflow_parser.add_argument(
-            "--synapse-api-key",
-            help="Synapse API key (can also use SYNAPSE_API_KEY env var)"
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SYNAPSE_PAT env var)"
         )
     
     args = parser.parse_args()
@@ -229,8 +225,7 @@ def run_automated_workflow(args, logger):
         
         # Initialize Synapse uploader
         synapse_uploader = SynapseUploader(
-            username=args.synapse_username or os.getenv('SYNAPSE_USERNAME'),
-            api_key=args.synapse_api_key or os.getenv('SYNAPSE_API_KEY')
+            pat=args.synapse_pat or os.getenv('SYNAPSE_PAT')
         )
         
         # Create miner instance  

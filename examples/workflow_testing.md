@@ -12,8 +12,7 @@ pip install -e .
 
 2. Set up Synapse credentials (optional for testing):
 ```bash
-export SYNAPSE_USERNAME="your_username"
-export SYNAPSE_API_KEY="your_api_key"
+export SYNAPSE_PAT="your_personal_access_token"
 ```
 
 ## Test Tracking Functionality
@@ -64,8 +63,7 @@ synapse-miner workflow \
   --folder-id syn66046437 \
   --table-id syn66047339 \
   --max-files 1 \
-  --synapse-username test \
-  --synapse-api-key test \
+  --synapse-pat test \
   --verbose
 ```
 
@@ -77,8 +75,7 @@ If you have `act` installed, you can test the GitHub Actions workflow locally:
 # Install act: https://github.com/nektos/act
 
 # Create a .secrets file with:
-# SYNAPSE_USERNAME=your_username
-# SYNAPSE_API_KEY=your_api_key
+# SYNAPSE_PAT=your_personal_access_token
 
 # Run the workflow
 act workflow_dispatch --secret-file .secrets

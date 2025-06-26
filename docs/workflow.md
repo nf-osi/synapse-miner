@@ -17,8 +17,7 @@ The workflow automatically:
 
 Add these secrets to your GitHub repository settings:
 
-- `SYNAPSE_USERNAME`: Your Synapse username or email
-- `SYNAPSE_API_KEY`: Your Synapse personal access token
+- `SYNAPSE_PAT`: Your Synapse Personal Access Token
 
 ### Configuration
 
@@ -45,8 +44,7 @@ pip install -r requirements.txt
 pip install -e .
 
 # Run workflow (requires Synapse credentials)
-export SYNAPSE_USERNAME="your_username"
-export SYNAPSE_API_KEY="your_api_key"
+export SYNAPSE_PAT="your_personal_access_token"
 
 synapse-miner workflow \
   --folder-id syn66046437 \
@@ -122,8 +120,8 @@ Each run uploads artifacts containing:
 ### Common Issues
 
 1. **Synapse Authentication Failed**
-   - Verify `SYNAPSE_USERNAME` and `SYNAPSE_API_KEY` secrets
-   - Check if API key has required permissions
+   - Verify `SYNAPSE_PAT` secret is set correctly
+   - Check if Personal Access Token has required permissions
 
 2. **No New Files Processed**
    - Check if tracking file correctly reflects last processed batch

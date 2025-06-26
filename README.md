@@ -27,8 +27,7 @@ For continuous processing of Europe PMC with Synapse integration:
 
 ```bash
 # Set up Synapse credentials
-export SYNAPSE_USERNAME="your_username"
-export SYNAPSE_API_KEY="your_api_key"
+export SYNAPSE_PAT="your_personal_access_token"
 
 # Run automated workflow
 synapse-miner workflow \

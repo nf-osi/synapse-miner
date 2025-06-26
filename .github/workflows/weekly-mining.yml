@@ -37,8 +37,7 @@ jobs:
     
     - name: Run PMC mining workflow
       env:
-        SYNAPSE_USERNAME: ${{ secrets.SYNAPSE_USERNAME }}
-        SYNAPSE_API_KEY: ${{ secrets.SYNAPSE_API_KEY }}
+        SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
       run: |
         # Determine max files parameter
         MAX_FILES_ARG=""
