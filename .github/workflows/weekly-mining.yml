@@ -38,6 +38,7 @@ jobs:
     - name: Run PMC mining workflow
       env:
         SERVICE_TOKEN: ${{ secrets.SERVICE_TOKEN }}
+        SYNAPSE_PAT: ${{secrets.SYNAPSE_PAT}}
       run: |
         # Determine max files parameter
         MAX_FILES_ARG=""
@@ -47,6 +48,7 @@ jobs:
         
         # Run the workflow
         synapse-miner -v workflow \
+          --synapse-pat "$SYNAPSE_PAT" \ 
           --folder-id syn66046437 \
           --table-id syn66047339 \
           --tracking-file last_processed_pmc.json \
