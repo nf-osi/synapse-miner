@@ -46,12 +46,11 @@ jobs:
         fi
         
         # Run the workflow
-        synapse-miner workflow \
+        synapse-miner -v workflow \
           --folder-id syn66046437 \
           --table-id syn66047339 \
           --tracking-file last_processed_pmc.json \
           --output workflow_results.csv \
-          -v \
           $MAX_FILES_ARG
     
     - name: Commit and push tracking file
