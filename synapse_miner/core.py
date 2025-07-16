@@ -354,6 +354,13 @@ class SynapseMiner:
                         'start_pmc': start_pmc,
                         'end_pmc': end_pmc
                     })
+                else:
+                    logger.debug(f"Skipping file {filename} - doesn't match PMC pattern")
+                
+            logger.info(f"Found {len(file_entries)} XML files with PMC ranges")
+            if not file_entries:
+                logger.error("No PMC XML files found in directory listing")
+                return
                 
             # Sort files by starting PMC ID
             file_entries.sort(key=lambda x: x['start_pmc'])
@@ -361,7 +368,7 @@ class SynapseMiner:
             
             # Find starting point
             if start_from:
-                # Extract PMC ID range from start_from
+                # Try to extract PMC ID range from start_from (format: PMC123_PMC456)
                 start_pmc_match = re.search(r'PMC(\d+)_PMC(\d+)', start_from)
                 if start_pmc_match:
                     start_pmc = int(start_pmc_match.group(1))
@@ -374,14 +381,27 @@ class SynapseMiner:
                     else:
                         logger.warning(f"Could not find file with PMC ID >= {start_pmc}")
                 else:
-                    # Try exact filename match as fallback
-                    try:
-                        start_idx = next(i for i, entry in enumerate(file_entries) 
-                                       if entry['filename'] == start_from)
-                        file_urls = [e['url'] for e in file_entries[start_idx:]]
-                        logger.info(f"Starting from file: {file_urls[0]}")
-                    except StopIteration:
-                        logger.warning(f"Start file {start_from} not found, starting from beginning")
+                    # Try to extract simple PMC ID (format: PMC123456)
+                    simple_pmc_match = re.search(r'PMC(\d+)', start_from)
+                    if simple_pmc_match:
+                        start_pmc = int(simple_pmc_match.group(1))
+                        # Find the first file with PMC ID >= start_pmc
+                        for i, entry in enumerate(file_entries):
+                            if entry['start_pmc'] >= start_pmc:
+                                file_urls = [e['url'] for e in file_entries[i:]]
+                                logger.info(f"Starting from file: {file_urls[0]} (start_pmc >= {start_pmc})")
+                                break
+                        else:
+                            logger.warning(f"Could not find file with PMC ID >= {start_pmc}")
+                    else:
+                        # Try exact filename match as fallback
+                        try:
+                            start_idx = next(i for i, entry in enumerate(file_entries) 
+                                           if entry['filename'] == start_from)
+                            file_urls = [e['url'] for e in file_entries[start_idx:]]
+                            logger.info(f"Starting from file: {file_urls[0]}")
+                        except StopIteration:
+                            logger.warning(f"Start file {start_from} not found, starting from beginning")
                     
             # Limit number of files
             if max_files:
