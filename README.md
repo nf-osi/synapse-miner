@@ -61,7 +61,7 @@ The package generates two types of output files:
 2. Batch files (`results.csv.{filename}.csv`): Contains findings from individual files
 
 Each row in the output contains:
-- `pmcid`: The PubMed Central ID of the article
+- `pmcid`: The PubMed Central ID of the article with bioregistry prefix (e.g., "pmc:PMC1234567")
 - `synid`: The Synapse ID found in the article
 - `context`: 25 characters before and after the Synapse ID for context
 

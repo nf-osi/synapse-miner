@@ -83,7 +83,7 @@ The miner generates two types of output files:
 1. Main results file (`results.csv`):
    - Contains all findings across all processed files
    - Updated after each file is processed
-   - Format: CSV with columns `pmcid`, `synid`, `context`
+   - Format: CSV with columns `pmcid` (with bioregistry prefix), `synid`, `context`
 
 2. Batch files (`results.csv.{filename}.csv`):
    - Created for each processed XML file
