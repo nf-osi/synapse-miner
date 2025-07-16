@@ -51,7 +51,7 @@ jobs:
           --table-id syn66047339 \
           --tracking-file last_processed_pmc.json \
           --output workflow_results.csv \
-          --verbose \
+          -v \
           $MAX_FILES_ARG
     
     - name: Commit and push tracking file
