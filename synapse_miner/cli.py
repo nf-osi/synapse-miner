@@ -9,7 +9,15 @@ from pathlib import Path
 from typing import Optional
 
 from .core import SynapseMiner
-from synapse_miner.utils import combine_results, ProcessingTracker
+from synapse_miner.utils import ProcessingTracker
+
+# Import combine_results conditionally
+try:
+    from synapse_miner.utils import combine_results
+    COMBINE_AVAILABLE = True
+except ImportError:
+    combine_results = None
+    COMBINE_AVAILABLE = False
 
 # Import SynapseUploader only if available
 try:
@@ -192,6 +200,9 @@ def main() -> None:
             
         elif args.command == "combine":
             # Combine results
+            if not COMBINE_AVAILABLE:
+                logger.error("Combine functionality requires pandas. Please install: pip install pandas")
+                sys.exit(1)
             combine_results(args.output, args.directory, args.pattern)
             
         elif args.command == "workflow" and SYNAPSE_AVAILABLE:
@@ -224,9 +235,14 @@ def run_automated_workflow(args, logger):
             logger.info("No previous processing state found, starting from beginning")
         
         # Initialize Synapse uploader
-        synapse_uploader = SynapseUploader(
-            pat=args.synapse_pat or os.getenv('SYNAPSE_PAT')
-        )
+        try:
+            synapse_uploader = SynapseUploader(
+                pat=args.synapse_pat or os.getenv('SYNAPSE_PAT')
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize Synapse client: {e}")
+            logger.error("Please check your SYNAPSE_PAT environment variable or --synapse-pat argument")
+            sys.exit(1)
         
         # Create miner instance  
         miner = SynapseMiner(context_size=args.context_size)
@@ -234,18 +250,10 @@ def run_automated_workflow(args, logger):
         # Determine start file based on last processed PMC ID
         start_from = None
         if last_pmc_id:
-            # Convert PMC ID to approximate pattern for finding next batch
-            # Extract numeric part and use it to find the next available batch
-            import re
-            pmc_match = re.search(r'PMC(\d+)', last_pmc_id)
-            if pmc_match:
-                pmc_num = int(pmc_match.group(1))
-                # Use the PMC ID pattern that core.py expects
-                start_from = f"PMC{pmc_num}_PMC"
-                logger.info(f"Will start from batches with PMC ID >= {pmc_num}")
-            else:
-                logger.warning(f"Could not parse PMC ID: {last_pmc_id}")
-                start_from = last_pmc_id
+            # Simply use the last processed PMC ID as start_from
+            # The core.py will handle finding the next available batch
+            start_from = last_pmc_id
+            logger.info(f"Will start from PMC ID >= {last_pmc_id}")
             
         # Clean up any existing batch files from previous runs
         batch_pattern = f"{args.output}.*.csv"
@@ -259,12 +267,16 @@ def run_automated_workflow(args, logger):
         
         # Process files from HTTP server
         logger.info(f"Starting processing from URL: {args.url}")
-        miner.process_http_files(
-            base_url=args.url,
-            output_path=args.output,
-            start_from=start_from,
-            max_files=args.max_files
-        )
+        try:
+            miner.process_http_files(
+                base_url=args.url,
+                output_path=args.output,
+                start_from=start_from,
+                max_files=args.max_files
+            )
+        except Exception as e:
+            logger.error(f"Failed to process files from HTTP server: {e}")
+            sys.exit(1)
         
         # Find generated batch files
         batch_files = glob.glob(batch_pattern)
@@ -277,11 +289,15 @@ def run_automated_workflow(args, logger):
         logger.info(f"Found {len(batch_files)} batch files to upload")
         
         # Upload batch files and results to Synapse
-        success = synapse_uploader.batch_upload_workflow(
-            batch_files=batch_files,
-            folder_id=args.folder_id,
-            table_id=args.table_id
-        )
+        try:
+            success = synapse_uploader.batch_upload_workflow(
+                batch_files=batch_files,
+                folder_id=args.folder_id,
+                table_id=args.table_id
+            )
+        except Exception as e:
+            logger.error(f"Failed during Synapse upload workflow: {e}")
+            sys.exit(1)
         
         if success:
             # Update tracking file with the last processed batch
