@@ -157,7 +157,7 @@ def main() -> None:
         )
         workflow_parser.add_argument(
             "--synapse-pat",
-            help="Synapse Personal Access Token (can also use SYNAPSE_PAT env var)"
+            help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
     
     args = parser.parse_args()
@@ -236,12 +236,12 @@ def run_automated_workflow(args, logger):
         
         # Initialize Synapse uploader
         try:
-            synapse_uploader = SynapseUploader(
-                pat=args.synapse_pat or os.getenv('SYNAPSE_PAT')
-            )
+            # Prioritize SERVICE_TOKEN, then fall back to SYNAPSE_PAT for backward compatibility
+            token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+            synapse_uploader = SynapseUploader(pat=token)
         except Exception as e:
             logger.error(f"Failed to initialize Synapse client: {e}")
-            logger.error("Please check your SYNAPSE_PAT environment variable or --synapse-pat argument")
+            logger.error("Please check your SERVICE_TOKEN or SYNAPSE_PAT environment variable or --synapse-pat argument")
             sys.exit(1)
         
         # Create miner instance  
