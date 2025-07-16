@@ -22,5 +22,8 @@ synapse_miner/utils/__init__.py
 synapse_miner/utils/data_utils.py
 synapse_miner/utils/file_utils.py
 synapse_miner/utils/security.py
+synapse_miner/utils/synapse_integration.py
 synapse_miner/utils/text_processing.py
+synapse_miner/utils/tracking.py
 tests/test_core.py
+tests/test_tracking.py
