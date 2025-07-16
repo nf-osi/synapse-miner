@@ -1,5 +1,6 @@
 pandas>=1.3.0
 pypdf<4.0.0,>=3.0.0
 python-magic<0.5.0,>=0.4.27
+rich>=10.0.0
 synapseclient<5.0.0,>=4.0.0
 tqdm<5.0.0,>=4.65.0
