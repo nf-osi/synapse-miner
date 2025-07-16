@@ -90,7 +90,7 @@ The workflow uses `last_processed_pmc.json` to track progress:
 #### Table Upload
 - Location: Synapse table syn66047339
 - Deduplication: Checks existing PMC IDs to avoid duplicates
-- Columns: `pmcid`, `synid`, `context`
+- Columns: `pmcid` (with bioregistry prefix, e.g., "pmc:PMC1234567"), `synid`, `context`
 
 ### Error Handling
 

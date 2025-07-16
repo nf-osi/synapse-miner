@@ -132,7 +132,7 @@ def process_article(article_xml: str, context_size: int) -> Tuple[Optional[str],
             context = context.replace('"', "'")
             
             findings.append({
-                "pmcid": pmc_id,
+                "pmcid": f"pmc:{pmc_id}",
                 "synid": syn_id,
                 "context": context
             })
