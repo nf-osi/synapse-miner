@@ -4,7 +4,7 @@ File utility functions for the Synapse ID Mining package.
 
 import os
 import logging
-import PyPDF2
+import pypdf
 
 logger = logging.getLogger("synapse_miner.utils.file_utils")
 
@@ -22,7 +22,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     text = ""
     try:
         with open(pdf_path, 'rb') as file:
-            reader = PyPDF2.PdfReader(file)
+            reader = pypdf.PdfReader(file)
             for page_num in range(len(reader.pages)):
                 page = reader.pages[page_num]
                 text += page.extract_text() + "\n\n"

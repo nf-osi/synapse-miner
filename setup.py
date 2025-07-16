@@ -12,9 +12,11 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
-        "pandas",
-        "tqdm",
-        "synapseclient>=4.0.0",
+        "pandas>=1.3.0",
+        "pypdf>=3.0.0,<4.0.0",
+        "tqdm>=4.65.0,<5.0.0",
+        "python-magic>=0.4.27,<0.5.0",
+        "synapseclient>=4.0.0,<5.0.0",
     ],
     entry_points={
         "console_scripts": [
