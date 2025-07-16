@@ -1,5 +1,5 @@
 {
-  "last_processed_pmc_id": null,
-  "updated_at": null,
+  "last_processed_pmc_id": "PMC11896712",
+  "updated_at": "2025-04-10T21:58:58Z",
   "description": "This file tracks the last processed PMC ID for the weekly mining workflow. It will be automatically updated by the GitHub Actions workflow."
 }
