@@ -48,7 +48,7 @@ jobs:
         
         # Run the workflow
         synapse-miner -v workflow \
-          --synapse-pat "$SYNAPSE_PAT" \ 
+          --synapse-pat "$SYNAPSE_PAT" \
           --folder-id syn66046437 \
           --table-id syn66047339 \
           --tracking-file last_processed_pmc.json \
