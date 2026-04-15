@@ -80,10 +80,10 @@ class SynapseUploader:
     def get_existing_pmc_ids(self, table_id: str) -> Set[str]:
         """
         Get existing PMC IDs from Synapse table to avoid duplicates.
-        
+
         Args:
             table_id: Synapse ID of the table
-            
+
         Returns:
             Set of PMC IDs already in the table
         """
@@ -92,7 +92,7 @@ class SynapseUploader:
             query = f"SELECT pmcid FROM {table_id}"
             results = self.syn.tableQuery(query)
             df = results.asDataFrame()
-            
+
             if 'pmcid' in df.columns:
                 existing_ids = set(df['pmcid'].astype(str))
                 logger.info(f"Found {len(existing_ids)} existing PMC IDs in table {table_id}")
@@ -100,11 +100,31 @@ class SynapseUploader:
             else:
                 logger.warning(f"No 'pmcid' column found in table {table_id}")
                 return set()
-                
+
         except Exception as e:
             logger.error(f"Error querying existing PMC IDs from table {table_id}: {e}")
             return set()
     
+    def get_all_results(self, table_id: str) -> "pd.DataFrame":
+        """
+        Get all results from Synapse table for generating LabLinks XML.
+
+        Args:
+            table_id: Synapse ID of the table
+
+        Returns:
+            DataFrame with pmcid and synid columns
+        """
+        try:
+            query = f"SELECT pmcid, synid FROM {table_id}"
+            results = self.syn.tableQuery(query)
+            df = results.asDataFrame()
+            logger.info(f"Retrieved {len(df)} rows from table {table_id}")
+            return df
+        except Exception as e:
+            logger.error(f"Error querying all results from table {table_id}: {e}")
+            raise
+
     def upload_new_results_to_table(self, csv_path: str, table_id: str, 
                                    check_duplicates: bool = True) -> bool:
         """
@@ -127,7 +147,7 @@ class SynapseUploader:
                 return True
                 
             original_count = len(df)
-            
+
             # Filter out duplicates if requested
             if check_duplicates:
                 existing_ids = self.get_existing_pmc_ids(table_id)

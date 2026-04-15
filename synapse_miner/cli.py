@@ -160,8 +160,50 @@ def main() -> None:
             help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
     
+    # LabLinks XML generation command
+    if SYNAPSE_AVAILABLE:
+        labslinks_parser = subparsers.add_parser(
+            "labslinks",
+            help="Generate EuropePMC LabLinks XML from Synapse table"
+        )
+        labslinks_parser.add_argument(
+            "--table-id",
+            required=True,
+            help="Synapse table ID to query for results (e.g., syn66047339)"
+        )
+        labslinks_parser.add_argument(
+            "--provider-id",
+            required=True,
+            type=int,
+            help="EuropePMC LabLinks provider ID"
+        )
+        labslinks_parser.add_argument(
+            "--output-dir",
+            default="labslinks",
+            help="Directory to write links.xml and profile.xml (default: labslinks)"
+        )
+        labslinks_parser.add_argument(
+            "--provider-name",
+            default="Sage Bionetworks",
+            help="Provider display name (default: Sage Bionetworks)"
+        )
+        labslinks_parser.add_argument(
+            "--provider-description",
+            default="Data available via Synapse, the Sage Bionetworks data sharing platform",
+            help="Provider description shown alongside links"
+        )
+        labslinks_parser.add_argument(
+            "--provider-email",
+            default="act@sagebase.org",
+            help="Provider contact email (default: act@sagebase.org)"
+        )
+        labslinks_parser.add_argument(
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
+        )
+
     args = parser.parse_args()
-    
+
     # Set up logging
     setup_logging(args.verbose)
     logger = logging.getLogger("synapse_miner.cli")
@@ -208,7 +250,11 @@ def main() -> None:
         elif args.command == "workflow" and SYNAPSE_AVAILABLE:
             # Run automated workflow
             run_automated_workflow(args, logger)
-            
+
+        elif args.command == "labslinks" and SYNAPSE_AVAILABLE:
+            # Generate LabLinks XML from Synapse table
+            run_labslinks_workflow(args, logger)
+
         else:
             parser.print_help()
             sys.exit(1)
@@ -326,6 +372,54 @@ def run_automated_workflow(args, logger):
     except Exception as e:
         logger.error(f"Error in automated workflow: {e}")
         sys.exit(1)
+
+def run_labslinks_workflow(args, logger):
+    """Generate EuropePMC LabLinks XML from the Synapse results table."""
+    import os
+    from synapse_miner.utils.xml_generator import generate_profile_xml, generate_links_xml
+
+    # Initialize Synapse uploader
+    try:
+        token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+        synapse_uploader = SynapseUploader(pat=token)
+    except Exception as e:
+        logger.error(f"Failed to initialize Synapse client: {e}")
+        sys.exit(1)
+
+    # Pull all (pmcid, synid) pairs from the table
+    try:
+        df = synapse_uploader.get_all_results(args.table_id)
+    except Exception as e:
+        logger.error(f"Failed to query Synapse table {args.table_id}: {e}")
+        sys.exit(1)
+
+    if df.empty:
+        logger.warning("No data found in Synapse table — nothing to generate")
+        return
+
+    logger.info(f"Retrieved {len(df)} rows; generating LabLinks XML in '{args.output_dir}'")
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    profile_path = os.path.join(args.output_dir, "profile.xml")
+    generate_profile_xml(
+        provider_id=args.provider_id,
+        provider_name=args.provider_name,
+        provider_description=args.provider_description,
+        provider_email=args.provider_email,
+        output_path=profile_path,
+    )
+    logger.info(f"Wrote {profile_path}")
+
+    links_path = os.path.join(args.output_dir, "links.xml")
+    generate_links_xml(
+        df=df,
+        provider_id=args.provider_id,
+        output_path=links_path,
+    )
+    logger.info(f"Wrote {links_path}")
+    logger.info("Done — upload both files to the EuropePMC LabsLink FTP site")
+
 
 if __name__ == "__main__":
     main()

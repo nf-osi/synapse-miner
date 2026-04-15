@@ -25,5 +25,7 @@ synapse_miner/utils/security.py
 synapse_miner/utils/synapse_integration.py
 synapse_miner/utils/text_processing.py
 synapse_miner/utils/tracking.py
+synapse_miner/utils/xml_generator.py
+tests/test_bioregistry_prefix.py
 tests/test_core.py
 tests/test_tracking.py
