@@ -18,6 +18,7 @@ setup(
         "python-magic>=0.4.27,<0.5.0",
         "synapseclient>=4.0.0,<5.0.0",
         "rich>=10.0.0",
+        "lxml>=4.9.0",
     ],
     entry_points={
         "console_scripts": [
