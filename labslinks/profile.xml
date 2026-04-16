@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<providers><provider><id>9999</id><resourceName>Sage Bionetworks</resourceName><description>Data available via Synapse, the Sage Bionetworks data sharing platform</description><email>act@sagebase.org</email></provider></providers>
