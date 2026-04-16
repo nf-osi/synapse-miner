@@ -37,9 +37,8 @@ jobs:
         SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
       run: |
         PROVIDER_ID="${{ github.event.inputs.provider_id || vars.LABSLINKS_PROVIDER_ID }}"
-        TOKEN="${SERVICE_TOKEN:-$SYNAPSE_PAT}"
         synapse-miner -v labslinks \
-          --synapse-pat "$TOKEN" \
+          --synapse-pat "$SYNAPSE_PAT" \
           --table-id syn66047339 \
           --provider-id "$PROVIDER_ID" \
           --output-dir labslinks/
