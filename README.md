@@ -1,73 +1,133 @@
 # Synapse ID Miner
 
-A Python package for mining Synapse IDs from scientific articles in Europe PMC's Open Access subset.
+A Python package that mines Synapse IDs from Europe PMC's Open Access article corpus, uploads findings to a Synapse table, and generates [EuropePMC LabsLink](https://europepmc.org/LabsLink) XML so that dataset links appear directly on article pages.
 
-## Features
+## How it works
 
-- Downloads and processes XML files from Europe PMC's Open Access subset
-- Extracts Synapse IDs with surrounding context from articles
-- Handles large XML files efficiently using parallel processing
-- Saves results incrementally to prevent data loss
-- Provides progress tracking during download and processing
-- Supports starting from a specific file and limiting the number of files processed
-- Automated weekly workflow to send results to synapse
+1. **Mine** — Downloads bulk XML from the Europe PMC Open Access FTP, scans each article for Synapse IDs (`syn` followed by 7–12 digits), and captures surrounding context.
+2. **Upload** — Deduplicates against the existing Synapse table and appends new findings.
+3. **Link** — Generates a LabsLink `links.xml` + `profile.xml` from the full table, ready to submit to EuropePMC so links back to Synapse appear on article pages.
+
+Steps 1–2 run automatically every Monday; step 3 runs every Tuesday (after new data has been uploaded).
 
 ## Installation
 
 ```bash
 pip install git+https://github.com/nf-osi/synapse-miner.git
-
 ```
 
-## Usage
+## CLI reference
 
+### `synapse-miner http` — mine from Europe PMC
 
-### Command Line Interface
-
-Process XML files from Europe PMC's Open Access subset:
+Download and process XML files from the Europe PMC Open Access subset.
 
 ```bash
-synapse-miner http -u https://europepmc.org/ftp/oa/ -o results.csv -s PMC3000001_PMC3010000.xml.gz -m 1
+synapse-miner http \
+  -u https://europepmc.org/ftp/oa/ \
+  -o results.csv \
+  [-s PMC3000001_PMC3010000.xml.gz]  # start from a specific batch
+  [-m 2]                              # limit number of files (useful for testing)
 ```
 
-Arguments:
-- `-u, --url`: Base URL of the Europe PMC Open Access subset
-- `-o, --output`: Path to save results
-- `-s, --start-from`: Filename to start processing from (optional)
-- `-m, --max-files`: Maximum number of files to process (optional)
+### `synapse-miner process` — mine a local file
 
-### Python API
-
-```python
-from synapse_miner import SynapseMiner
-
-# Initialize miner
-miner = SynapseMiner()
-
-# Process files from HTTP server
-miner.process_http_files(
-    base_url="https://europepmc.org/ftp/oa/",
-    output_path="results.csv",
-    start_from="PMC3000001_PMC3010000.xml.gz",
-    max_files=1
-)
+```bash
+synapse-miner process path/to/articles.xml.gz -o results.csv
 ```
+
+### `synapse-miner combine` — merge batch CSVs
+
+After processing multiple files, combine the per-file batch CSVs into one.
+
+```bash
+synapse-miner combine -o combined_results.csv [-d ./results] [-p "results.csv.*.csv"]
+```
+
+### `synapse-miner workflow` — automated mining + upload
+
+Runs the full weekly pipeline: mines new articles, uploads batch files and results to Synapse, and updates the tracking file.
+
+```bash
+export SYNAPSE_PAT="your_token"
+
+synapse-miner workflow \
+  --folder-id syn66046437 \
+  --table-id syn66047339 \
+  --tracking-file last_processed_pmc.json \
+  --output workflow_results.csv \
+  [--max-files 2]   # limit for testing
+```
+
+### `synapse-miner labslinks` — generate EuropePMC LabsLink XML
+
+Queries the Synapse results table and writes `links.xml` and `profile.xml` for submission to the EuropePMC LabsLink FTP.
+
+```bash
+export SYNAPSE_PAT="your_token"
+
+synapse-miner labslinks \
+  --table-id syn66047339 \
+  --provider-id <EUROPEPMC_PROVIDER_ID> \
+  --output-dir labslinks/
+```
+
+Optional overrides (defaults shown):
+- `--provider-name "Sage Bionetworks"`
+- `--provider-description "Data available via Synapse, the Sage Bionetworks data sharing platform"`
+- `--provider-email "act@sagebase.org"`
+
+Upload both output files to the EuropePMC LabsLink FTP once generated.
 
 ## Output
 
-The package generates two types of output files:
+| File | Description |
+|------|-------------|
+| `results.csv` | All findings from a run |
+| `results.csv.{batch}.csv` | Per-file batch results |
+| `last_processed_pmc.json` | Tracks the last processed PMC batch for resumption |
+| `labslinks/links.xml` | EuropePMC LabsLink links file |
+| `labslinks/profile.xml` | EuropePMC LabsLink provider profile |
 
-1. Main results file (`results.csv`): Contains all findings across all processed files
-2. Batch files (`results.csv.{filename}.csv`): Contains findings from individual files
+Each row in the results CSVs contains:
+- `pmcid` — PubMed Central ID with bioregistry prefix (e.g. `pmc:PMC1234567`)
+- `synid` — Synapse ID found in the article (e.g. `syn23630203`)
+- `context` — ~25 characters of surrounding text
 
-Each row in the output contains:
-- `pmcid`: The PubMed Central ID of the article with bioregistry prefix (e.g., "pmc:PMC1234567")
-- `synid`: The Synapse ID found in the article
-- `context`: 25 characters before and after the Synapse ID for context
+Multiple rows per article are expected and intentional: a paper can reference the same Synapse dataset in several sentences, and each mention is recorded separately with its own context.
 
-## Notes
+## Synapse resources
 
-- The package automatically handles retries for failed downloads
-- Downloaded files are cleaned up after processing to save disk space
-- Progress is tracked and displayed during both download and processing
-- Results are saved after each file is processed to prevent data loss
+| Resource | ID |
+|----------|----|
+| Batch file folder | [syn66046437](https://www.synapse.org/Synapse/syn66046437) |
+| Results table | [syn66047339](https://www.synapse.org/Synapse/syn66047339) |
+
+## Automated workflows
+
+### Weekly mining (`weekly-mining.yml`)
+
+Runs every **Monday at 22:00 UTC**.
+
+- Resumes from `last_processed_pmc.json` so only new batches are processed
+- Uploads batch CSVs to the Synapse folder and new rows to the results table
+- Commits the updated tracking file back to the repository
+
+Can be triggered manually from the Actions tab with an optional `max_files` parameter for testing.
+
+### LabsLink generation (`generate-labslinks.yml`)
+
+Runs every **Tuesday at 10:00 UTC** (~12 hours after mining).
+
+- Queries the full Synapse results table
+- Writes deduplicated `labslinks/links.xml` and `labslinks/profile.xml`
+- Commits the updated files to the repository and uploads them as a workflow artifact
+
+Can be triggered manually from the Actions tab with a `provider_id` input.
+
+## Repository secrets and variables
+
+| Name | Type | Required by | Description |
+|------|------|-------------|-------------|
+| `SYNAPSE_PAT` | Secret | both workflows | Synapse Personal Access Token with read/write access to syn66046437 and syn66047339 |
+| `LABSLINKS_PROVIDER_ID` | Variable | `generate-labslinks.yml` | EuropePMC LabsLink provider ID assigned during registration |
