@@ -160,6 +160,47 @@ def main() -> None:
             help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
     
+    # EBI Search XML generation command
+    if SYNAPSE_AVAILABLE:
+        ebisearch_parser = subparsers.add_parser(
+            "ebisearch",
+            help="Generate EBI Search XML from Synapse table"
+        )
+        ebisearch_parser.add_argument(
+            "--table-id",
+            required=True,
+            help="Synapse table ID to query for results (e.g., syn66047339)"
+        )
+        ebisearch_parser.add_argument(
+            "--output-dir",
+            default="ebisearch",
+            help="Directory to write ebisearch.xml and entity_cache.json (default: ebisearch)"
+        )
+        ebisearch_parser.add_argument(
+            "--cache-file",
+            default=None,
+            help="Path to entity metadata cache JSON (default: <output-dir>/entity_cache.json)"
+        )
+        ebisearch_parser.add_argument(
+            "--refresh",
+            action="store_true",
+            help="Re-fetch all entity metadata from Synapse, ignoring and overwriting the cache"
+        )
+        ebisearch_parser.add_argument(
+            "--db-name",
+            default="Sage Bionetworks Synapse",
+            help="Database name written to the EBI Search XML header"
+        )
+        ebisearch_parser.add_argument(
+            "--db-description",
+            default="Datasets available via Synapse, the Sage Bionetworks data sharing platform",
+            help="Database description written to the EBI Search XML header"
+        )
+        ebisearch_parser.add_argument(
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SYNAPSE_PAT env var)"
+        )
+
     # LabLinks XML generation command
     if SYNAPSE_AVAILABLE:
         labslinks_parser = subparsers.add_parser(
@@ -250,6 +291,9 @@ def main() -> None:
         elif args.command == "workflow" and SYNAPSE_AVAILABLE:
             # Run automated workflow
             run_automated_workflow(args, logger)
+
+        elif args.command == "ebisearch" and SYNAPSE_AVAILABLE:
+            run_ebisearch_workflow(args, logger)
 
         elif args.command == "labslinks" and SYNAPSE_AVAILABLE:
             # Generate LabLinks XML from Synapse table
@@ -419,6 +463,51 @@ def run_labslinks_workflow(args, logger):
     )
     logger.info(f"Wrote {links_path}")
     logger.info("Done — upload both files to the EuropePMC LabsLink FTP site")
+
+
+def run_ebisearch_workflow(args, logger):
+    """Generate an EBI Search XML file from the Synapse results table."""
+    import os
+    from synapse_miner.utils.ebisearch_generator import generate_ebisearch_xml
+
+    token = args.synapse_pat or os.getenv('SYNAPSE_PAT')
+    try:
+        synapse_uploader = SynapseUploader(pat=token)
+    except Exception as e:
+        logger.error(f"Failed to initialize Synapse client: {e}")
+        import sys
+        sys.exit(1)
+
+    try:
+        df = synapse_uploader.get_all_results(args.table_id)
+    except Exception as e:
+        logger.error(f"Failed to query Synapse table {args.table_id}: {e}")
+        import sys
+        sys.exit(1)
+
+    if df.empty:
+        logger.warning("No data found in Synapse table — nothing to generate")
+        return
+
+    output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
+
+    cache_file = args.cache_file or os.path.join(output_dir, "entity_cache.json")
+    output_path = os.path.join(output_dir, "ebisearch.xml")
+
+    if args.refresh:
+        logger.info("--refresh set: ignoring existing cache and re-fetching all metadata")
+
+    generate_ebisearch_xml(
+        syn=synapse_uploader.syn,
+        df=df,
+        output_path=output_path,
+        cache_path=cache_file,
+        refresh=args.refresh,
+        db_name=args.db_name,
+        db_description=args.db_description,
+    )
+    logger.info(f"Done — EBI Search XML written to {output_path}")
 
 
 if __name__ == "__main__":

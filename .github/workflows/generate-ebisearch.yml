@@ -1,0 +1,82 @@
+name: Generate EBI Search XML
+
+on:
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: 'Re-fetch all entity metadata, ignoring the cache'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '0 12 * * 2'  # Every Tuesday at 12:00 UTC, ~2h after generate-labslinks.yml
+
+jobs:
+  generate-ebisearch:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+
+    - name: Restore entity metadata cache
+      if: ${{ !inputs.refresh }}
+      uses: actions/cache/restore@v4
+      with:
+        path: ebisearch/entity_cache.json
+        key: ebisearch-entity-cache-${{ github.run_id }}
+        restore-keys: |
+          ebisearch-entity-cache-
+
+    - name: Generate EBI Search XML
+      env:
+        SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
+      run: |
+        REFRESH_ARG=""
+        if [ "${{ inputs.refresh }}" = "true" ]; then
+          REFRESH_ARG="--refresh"
+        fi
+        synapse-miner -v ebisearch \
+          --synapse-pat "$SYNAPSE_PAT" \
+          --table-id syn66047339 \
+          --output-dir ebisearch/ \
+          $REFRESH_ARG
+
+    - name: Save entity metadata cache
+      uses: actions/cache/save@v4
+      with:
+        path: ebisearch/entity_cache.json
+        key: ebisearch-entity-cache-${{ github.run_id }}
+
+    - name: Commit updated EBI Search XML
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add ebisearch/ebisearch.xml
+        if git diff --staged --quiet; then
+          echo "No changes to EBI Search XML"
+        else
+          git commit -m "Update EBI Search XML [skip ci]"
+          git push
+          echo "EBI Search XML committed and pushed"
+        fi
+
+    - name: Upload EBI Search XML as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ebisearch-xml
+        path: ebisearch/ebisearch.xml
+        retention-days: 90

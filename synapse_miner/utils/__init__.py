@@ -29,6 +29,14 @@ except ImportError:
     SynapseUploader = None
     SYNAPSE_AVAILABLE = False
 
+try:
+    from .ebisearch_generator import generate_ebisearch_xml, load_cache
+    EBISEARCH_AVAILABLE = True
+except ImportError:
+    generate_ebisearch_xml = None
+    load_cache = None
+    EBISEARCH_AVAILABLE = False
+
 __all__ = [
     'extract_context', 
     'ProcessingTracker'
@@ -42,3 +50,6 @@ if DATA_UTILS_AVAILABLE:
 
 if SYNAPSE_AVAILABLE:
     __all__.append('SynapseUploader')
+
+if EBISEARCH_AVAILABLE:
+    __all__.extend(['generate_ebisearch_xml', 'load_cache'])
