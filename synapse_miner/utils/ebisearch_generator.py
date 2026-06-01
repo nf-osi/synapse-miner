@@ -4,15 +4,20 @@ EBI Search XML generation from Synapse mining results.
 Each entry in the output represents a unique Synapse entity. PMC articles
 that cite it appear as cross-references. Portal membership is resolved via
 the same two-table lookup that powers the Synapse portal banner:
-  syn61609402 — data catalog: maps entity/ancestor IDs to portal appId + link
+  syn61609402 — data catalog: maps entity IDs to portal appId + link
   syn45291362 — source app config: maps appId to friendlyName
+
+Both tables are fetched once into memory before processing. Entity names
+are retrieved in batches of 100 via /entity/header/batch. Portal affiliation
+is resolved in-memory using each entity's benefactorId (its parent project)
+as the lookup key — eliminating per-entity table queries entirely.
 """
 
 import json
 import logging
 import os
 from datetime import date
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import xml.etree.ElementTree as ET
@@ -21,75 +26,93 @@ logger = logging.getLogger(__name__)
 
 _DATA_CATALOG_TABLE = "syn61609402"
 _SOURCE_APP_CONFIG_TABLE = "syn45291362"
+_BATCH_HEADER_SIZE = 100
 
 
-def _parse_date(iso_str: str) -> str:
-    """Extract YYYY-MM-DD from an ISO 8601 timestamp string."""
-    if iso_str:
-        return iso_str[:10]
-    return ""
-
-
-def _get_entity_info(syn, syn_id: str) -> Dict:
-    """Fetch name, description, and creation date from the Synapse REST API."""
-    try:
-        entity = syn.restGET(f"/entity/{syn_id}")
-        return {
-            "name": entity.get("name") or syn_id,
-            "description": entity.get("description") or "",
-            "created_on": _parse_date(entity.get("createdOn", "")),
-        }
-    except Exception as e:
-        logger.warning(f"Could not fetch entity info for {syn_id}: {e}")
-        return {"name": syn_id, "description": "", "created_on": ""}
-
-
-def _get_portal_info(syn, syn_id: str) -> Tuple[str, Optional[str]]:
+def _load_portal_catalog(syn) -> Tuple[Dict[str, Tuple[str, Optional[str]]], Dict[str, str]]:
     """
-    Resolve which portal (if any) a Synapse entity belongs to.
+    Fetch the data catalog and source app config tables once into memory.
 
-    Walks the entity's ancestor path and queries syn61609402 for a matching
-    appId, then looks up the human-readable portal name in syn45291362.
-    Returns ("Synapse", None) when the entity has no portal affiliation.
+    Returns:
+        catalog: dict mapping cataloged entity ID -> (friendlyName, link)
+        app_names: dict mapping appId -> friendlyName (kept for diagnostics)
     """
-    try:
-        path_data = syn.restGET(f"/entity/{syn_id}/path")
-        # Index 0 is always the Synapse root folder; skip it.
-        path_ids = [h["id"] for h in path_data.get("path", [])[1:]]
-    except Exception as e:
-        logger.warning(f"Could not fetch entity path for {syn_id}: {e}")
-        return "Synapse", None
+    logger.info("Loading portal catalog tables into memory ...")
 
-    if not path_ids:
-        return "Synapse", None
+    catalog_df = syn.tableQuery(
+        f"SELECT id, appId, link FROM {_DATA_CATALOG_TABLE}"
+    ).asDataFrame()
+    logger.info(f"  {len(catalog_df)} entries in data catalog ({_DATA_CATALOG_TABLE})")
 
-    try:
-        ids_csv = ",".join(f"'{pid}'" for pid in path_ids)
-        catalog_results = syn.tableQuery(
-            f"SELECT appId, link FROM {_DATA_CATALOG_TABLE} WHERE id IN ({ids_csv})"
-        )
-        catalog_df = catalog_results.asDataFrame()
-    except Exception as e:
-        logger.warning(f"Could not query data catalog for {syn_id}: {e}")
-        return "Synapse", None
+    name_df = syn.tableQuery(
+        f"SELECT appId, friendlyName FROM {_SOURCE_APP_CONFIG_TABLE}"
+    ).asDataFrame()
+    app_names: Dict[str, str] = dict(zip(name_df["appId"], name_df["friendlyName"]))
+    logger.info(f"  {len(app_names)} portal configs ({_SOURCE_APP_CONFIG_TABLE})")
 
-    if catalog_df.empty:
-        return "Synapse", None
+    catalog: Dict[str, Tuple[str, Optional[str]]] = {}
+    for _, row in catalog_df.iterrows():
+        entity_id = row["id"]
+        app_id = row.get("appId") or ""
+        link = row.get("link") or None
+        friendly_name = app_names.get(app_id, "Synapse")
+        catalog[entity_id] = (friendly_name, link)
 
-    app_id = catalog_df.iloc[0]["appId"]
-    link = catalog_df.iloc[0].get("link") or None
+    return catalog, app_names
 
-    try:
-        name_results = syn.tableQuery(
-            f"SELECT friendlyName FROM {_SOURCE_APP_CONFIG_TABLE} WHERE appId = '{app_id}'"
-        )
-        name_df = name_results.asDataFrame()
-        friendly_name = name_df.iloc[0]["friendlyName"] if not name_df.empty else "Synapse"
-    except Exception as e:
-        logger.warning(f"Could not fetch portal name for appId {app_id}: {e}")
-        friendly_name = "Synapse"
 
-    return friendly_name, link
+def _fetch_entity_headers_batch(syn, syn_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Batch-fetch EntityHeader for a list of syn IDs via POST /entity/header/batch.
+
+    Each header includes at minimum 'name' and 'benefactorId'. Processed in
+    chunks of 100 (Synapse API limit). Falls back to using the syn ID as name
+    on any error.
+
+    Returns:
+        dict mapping synId -> {name, benefactorId}
+    """
+    results: Dict[str, Dict] = {}
+    total = len(syn_ids)
+
+    for i in range(0, total, _BATCH_HEADER_SIZE):
+        chunk = syn_ids[i : i + _BATCH_HEADER_SIZE]
+        if (i // _BATCH_HEADER_SIZE) % 10 == 0:
+            logger.info(f"  Fetching entity headers {i + 1}–{min(i + _BATCH_HEADER_SIZE, total)} of {total} ...")
+        try:
+            response = syn.restPOST(
+                "/entity/header/batch",
+                body={"references": [{"targetId": sid} for sid in chunk]},
+            )
+            for header in response.get("results", []):
+                results[header["id"]] = {
+                    "name": header.get("name") or header["id"],
+                    "benefactorId": header.get("benefactorId"),
+                }
+        except Exception as e:
+            logger.warning(f"Batch header fetch failed for chunk starting at {i}: {e}")
+            for sid in chunk:
+                results.setdefault(sid, {"name": sid, "benefactorId": None})
+
+    return results
+
+
+def _resolve_portal(
+    syn_id: str,
+    benefactor_id: Optional[str],
+    catalog: Dict[str, Tuple[str, Optional[str]]],
+) -> Tuple[str, Optional[str]]:
+    """
+    Look up portal affiliation in memory.
+
+    Checks the entity itself first (it may be directly registered), then its
+    benefactor (typically the parent project). Returns ("Synapse", None) if
+    neither is in the catalog.
+    """
+    for check_id in filter(None, [syn_id, benefactor_id]):
+        if check_id in catalog:
+            return catalog[check_id]
+    return "Synapse", None
 
 
 def load_cache(cache_path: str) -> Dict:
@@ -128,6 +151,10 @@ def generate_ebisearch_xml(
     Each XML entry represents one unique Synapse entity with its PMC citations
     as cross-references and its portal affiliation as the repository field.
 
+    Portal tables are fetched once into memory. Entity names are retrieved in
+    batches of 100. All lookups are then done in memory — no per-entity table
+    queries.
+
     Args:
         syn: Authenticated synapseclient.Synapse instance.
         df: DataFrame with at least 'pmcid' and 'synid' columns.
@@ -145,7 +172,7 @@ def generate_ebisearch_xml(
         df["pmcid"] = df["pmcid"].str.replace(r"^pmc:", "", regex=True)
 
     # Group all citing PMC IDs by Synapse entity ID
-    syn_to_pmcs: Dict[str, set] = {}
+    syn_to_pmcs: Dict[str, Set[str]] = {}
     for _, row in df.iterrows():
         syn_id = row.get("synid")
         pmc_id = row.get("pmcid")
@@ -155,22 +182,30 @@ def generate_ebisearch_xml(
     unique_syn_ids = sorted(syn_to_pmcs.keys())
     logger.info(f"Building EBI Search XML for {len(unique_syn_ids)} unique Synapse IDs")
 
-    # Fetch metadata for any syn IDs absent from the cache
     uncached = [s for s in unique_syn_ids if s not in cache]
-    if uncached:
-        logger.info(f"Fetching metadata for {len(uncached)} uncached entities ...")
-        for i, syn_id in enumerate(uncached, 1):
-            if i % 100 == 0:
-                logger.info(f"  {i}/{len(uncached)} ...")
-                _save_cache(cache, cache_path)
 
-            entity_info = _get_entity_info(syn, syn_id)
-            repository, portal_link = _get_portal_info(syn, syn_id)
+    if uncached:
+        logger.info(f"{len(uncached)} entities not in cache — fetching metadata ...")
+
+        # --- Load portal tables once ---
+        catalog, _ = _load_portal_catalog(syn)
+
+        # --- Batch-fetch entity headers ---
+        logger.info(f"Batch-fetching entity headers ({_BATCH_HEADER_SIZE} per request) ...")
+        headers = _fetch_entity_headers_batch(syn, uncached)
+
+        # --- Populate cache from in-memory data ---
+        for syn_id in uncached:
+            header = headers.get(syn_id, {})
+            name = header.get("name") or syn_id
+            benefactor_id = header.get("benefactorId")
+
+            repository, portal_link = _resolve_portal(syn_id, benefactor_id, catalog)
 
             cache[syn_id] = {
-                "name": entity_info["name"],
-                "description": entity_info["description"],
-                "created_on": entity_info["created_on"],
+                "name": name,
+                "description": name,  # description falls back to name; update manually if needed
+                "created_on": "",      # not available from header batch; date section omitted
                 "repository": repository,
                 "portal_link": portal_link,
             }
