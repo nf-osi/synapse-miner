@@ -19,6 +19,7 @@ import os
 from datetime import date
 from typing import Dict, List, Optional, Set, Tuple
 
+import json
 import math
 
 import pandas as pd
@@ -93,12 +94,16 @@ def _fetch_entity_headers_batch(syn, syn_ids: List[str]) -> Dict[str, Optional[D
         try:
             response = syn.restPOST(
                 "/entity/header",
-                body={"references": [{"targetId": sid} for sid in chunk]},
+                body=json.dumps({"references": [{"targetId": sid} for sid in chunk]}),
             )
             for header in response.get("results", []):
+                # benefactorId is returned as an integer; convert to synXXX string
+                raw_benefactor = header.get("benefactorId")
+                benefactor_id = f"syn{raw_benefactor}" if raw_benefactor else None
                 results[header["id"]] = {
                     "name": header.get("name") or header["id"],
-                    "benefactorId": header.get("benefactorId"),
+                    "benefactorId": benefactor_id,
+                    "createdOn": _parse_date(header.get("createdOn", "")),
                 }
         except Exception as e:
             logger.warning(f"Batch header fetch failed for chunk starting at {i}: {e}")
@@ -218,12 +223,13 @@ def generate_ebisearch_xml(
 
             name = header.get("name") or syn_id
             benefactor_id = header.get("benefactorId")
+            created_on = header.get("createdOn") or ""
             repository, portal_link = _resolve_portal(syn_id, benefactor_id, catalog)
 
             cache[syn_id] = {
                 "name": name,
                 "description": name,
-                "created_on": "",
+                "created_on": created_on,
                 "repository": repository,
                 "portal_link": portal_link,
             }
