@@ -19,6 +19,8 @@ import os
 from datetime import date
 from typing import Dict, List, Optional, Set, Tuple
 
+import math
+
 import pandas as pd
 import xml.etree.ElementTree as ET
 
@@ -50,11 +52,14 @@ def _load_portal_catalog(syn) -> Tuple[Dict[str, Tuple[str, Optional[str]]], Dic
     app_names: Dict[str, str] = dict(zip(name_df["appId"], name_df["friendlyName"]))
     logger.info(f"  {len(app_names)} portal configs ({_SOURCE_APP_CONFIG_TABLE})")
 
+    def _nan_to_none(v):
+        return None if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+
     catalog: Dict[str, Tuple[str, Optional[str]]] = {}
     for _, row in catalog_df.iterrows():
-        entity_id = row["id"]
-        app_id = row.get("appId") or ""
-        link = row.get("link") or None
+        entity_id = str(row["id"])
+        app_id = str(_nan_to_none(row["appId"]) or "")
+        link: Optional[str] = str(row["link"]) if _nan_to_none(row.get("link")) else None
         friendly_name = app_names.get(app_id, "Synapse")
         catalog[entity_id] = (friendly_name, link)
 
@@ -81,7 +86,7 @@ def _fetch_entity_headers_batch(syn, syn_ids: List[str]) -> Dict[str, Dict]:
             logger.info(f"  Fetching entity headers {i + 1}–{min(i + _BATCH_HEADER_SIZE, total)} of {total} ...")
         try:
             response = syn.restPOST(
-                "/entity/header/batch",
+                "/entity/header",
                 body={"references": [{"targetId": sid} for sid in chunk]},
             )
             for header in response.get("results", []):
