@@ -66,24 +66,30 @@ def _load_portal_catalog(syn) -> Tuple[Dict[str, Tuple[str, Optional[str]]], Dic
     return catalog, app_names
 
 
-def _fetch_entity_headers_batch(syn, syn_ids: List[str]) -> Dict[str, Dict]:
+def _fetch_entity_headers_batch(syn, syn_ids: List[str]) -> Dict[str, Optional[Dict]]:
     """
     Batch-fetch EntityHeader for a list of syn IDs via POST /entity/header/batch.
 
     Each header includes at minimum 'name' and 'benefactorId'. Processed in
-    chunks of 100 (Synapse API limit). Falls back to using the syn ID as name
-    on any error.
+    chunks of 100 (Synapse API limit).
+
+    Entities absent from the response are inaccessible (private or deleted) and
+    are returned as None. On a chunk-level request failure all entities in that
+    chunk are also returned as None.
 
     Returns:
-        dict mapping synId -> {name, benefactorId}
+        dict mapping synId -> {name, benefactorId}, or None if inaccessible
     """
-    results: Dict[str, Dict] = {}
+    results: Dict[str, Optional[Dict]] = {}
     total = len(syn_ids)
 
     for i in range(0, total, _BATCH_HEADER_SIZE):
         chunk = syn_ids[i : i + _BATCH_HEADER_SIZE]
         if (i // _BATCH_HEADER_SIZE) % 10 == 0:
             logger.info(f"  Fetching entity headers {i + 1}–{min(i + _BATCH_HEADER_SIZE, total)} of {total} ...")
+        # Pre-mark all as None; successful responses will overwrite
+        for sid in chunk:
+            results[sid] = None
         try:
             response = syn.restPOST(
                 "/entity/header",
@@ -96,8 +102,7 @@ def _fetch_entity_headers_batch(syn, syn_ids: List[str]) -> Dict[str, Dict]:
                 }
         except Exception as e:
             logger.warning(f"Batch header fetch failed for chunk starting at {i}: {e}")
-            for sid in chunk:
-                results.setdefault(sid, {"name": sid, "benefactorId": None})
+            # All entries in chunk remain None
 
     return results
 
@@ -184,10 +189,10 @@ def generate_ebisearch_xml(
         if syn_id and pmc_id:
             syn_to_pmcs.setdefault(syn_id, set()).add(pmc_id)
 
-    unique_syn_ids = sorted(syn_to_pmcs.keys())
-    logger.info(f"Building EBI Search XML for {len(unique_syn_ids)} unique Synapse IDs")
+    all_syn_ids = sorted(syn_to_pmcs.keys())
+    logger.info(f"Found {len(all_syn_ids)} unique Synapse IDs in table")
 
-    uncached = [s for s in unique_syn_ids if s not in cache]
+    uncached = [s for s in all_syn_ids if s not in cache]
 
     if uncached:
         logger.info(f"{len(uncached)} entities not in cache — fetching metadata ...")
@@ -199,24 +204,39 @@ def generate_ebisearch_xml(
         logger.info(f"Batch-fetching entity headers ({_BATCH_HEADER_SIZE} per request) ...")
         headers = _fetch_entity_headers_batch(syn, uncached)
 
-        # --- Populate cache from in-memory data ---
+        # --- Populate cache; skip inaccessible (private/deleted) entities ---
+        inaccessible = [s for s in uncached if headers.get(s) is None]
+        if inaccessible:
+            logger.info(
+                f"Skipping {len(inaccessible)} inaccessible (private/deleted) entities"
+            )
+
         for syn_id in uncached:
-            header = headers.get(syn_id, {})
+            header = headers.get(syn_id)
+            if header is None:
+                continue  # not accessible — exclude from XML
+
             name = header.get("name") or syn_id
             benefactor_id = header.get("benefactorId")
-
             repository, portal_link = _resolve_portal(syn_id, benefactor_id, catalog)
 
             cache[syn_id] = {
                 "name": name,
-                "description": name,  # description falls back to name; update manually if needed
-                "created_on": "",      # not available from header batch; date section omitted
+                "description": name,
+                "created_on": "",
                 "repository": repository,
                 "portal_link": portal_link,
             }
 
         _save_cache(cache, cache_path)
         logger.info("Metadata fetch complete")
+
+    # Only include entities that are accessible (present in cache)
+    unique_syn_ids = [s for s in all_syn_ids if s in cache]
+    skipped = len(all_syn_ids) - len(unique_syn_ids)
+    if skipped:
+        logger.info(f"Excluding {skipped} inaccessible entities from XML ({len(unique_syn_ids)} remaining)")
+    logger.info(f"Building EBI Search XML for {len(unique_syn_ids)} entities")
 
     release_date = date.today().isoformat()
 
