@@ -28,6 +28,11 @@ import xml.etree.ElementTree as ET
 logger = logging.getLogger(__name__)
 
 _DATA_CATALOG_TABLE = "syn61609402"
+
+
+def _parse_date(iso_str: str) -> str:
+    """Extract YYYY-MM-DD from an ISO 8601 timestamp string."""
+    return iso_str[:10] if iso_str else ""
 _SOURCE_APP_CONFIG_TABLE = "syn45291362"
 _BATCH_HEADER_SIZE = 100
 
