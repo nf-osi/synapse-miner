@@ -298,6 +298,7 @@ def generate_ebisearch_xml(
         link_field.text = full_link
 
     tree = ET.ElementTree(database)
+    ET.indent(tree, space="  ")
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     tree.write(output_path, encoding="UTF-8", xml_declaration=True)
 
