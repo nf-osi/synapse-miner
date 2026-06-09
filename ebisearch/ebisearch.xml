@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-06-02</release>
-  <release_date>2026-06-02</release_date>
-  <entry_count>2172</entry_count>
+  <release>2026-06-09</release>
+  <release_date>2026-06-09</release_date>
+  <entry_count>2174</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -28309,6 +28309,20 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn64313527</field>
       </additional_fields>
     </entry>
+    <entry id="syn64322332">
+      <name>M005 Mouse Metabolomics Study - Aging Cell journal publication</name>
+      <description>M005 Mouse Metabolomics Study - Aging Cell journal publication</description>
+      <dates>
+        <date type="submission" value="2024-12-04" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC12073903" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn64322332</field>
+      </additional_fields>
+    </entry>
     <entry id="syn64332665">
       <name>EMT Metabolic Model</name>
       <description>EMT Metabolic Model</description>
@@ -30503,6 +30517,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn69902953</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn69925494">
+      <name>Biodomain_graph_key_driver_analysis</name>
+      <description>Biodomain_graph_key_driver_analysis</description>
+      <dates>
+        <date type="submission" value="2025-09-24" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC12632783" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn69925494</field>
       </additional_fields>
     </entry>
     <entry id="syn69931740">
