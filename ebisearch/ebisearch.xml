@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-06-16</release>
-  <release_date>2026-06-16</release_date>
-  <entry_count>2174</entry_count>
+  <release>2026-06-23</release>
+  <release_date>2026-06-23</release_date>
+  <entry_count>2179</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -659,6 +659,7 @@
         <ref dbname="PMC" dbkey="PMC12175411" />
         <ref dbname="PMC" dbkey="PMC12611789" />
         <ref dbname="PMC" dbkey="PMC12928005" />
+        <ref dbname="PMC" dbkey="PMC13262459" />
         <ref dbname="PMC" dbkey="PMC6080491" />
         <ref dbname="PMC" dbkey="PMC7414858" />
         <ref dbname="PMC" dbkey="PMC7666177" />
@@ -5236,6 +5237,7 @@
         <date type="submission" value="2013-04-18" />
       </dates>
       <cross_references>
+        <ref dbname="PMC" dbkey="PMC13235729" />
         <ref dbname="PMC" dbkey="PMC4944587" />
         <ref dbname="PMC" dbkey="PMC5369318" />
         <ref dbname="PMC" dbkey="PMC8661265" />
@@ -8441,6 +8443,7 @@
         <ref dbname="PMC" dbkey="PMC12096932" />
         <ref dbname="PMC" dbkey="PMC13042034" />
         <ref dbname="PMC" dbkey="PMC13158306" />
+        <ref dbname="PMC" dbkey="PMC13260607" />
         <ref dbname="PMC" dbkey="PMC7854528" />
         <ref dbname="PMC" dbkey="PMC8140091" />
         <ref dbname="PMC" dbkey="PMC8751379" />
@@ -8631,6 +8634,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12621940" />
+        <ref dbname="PMC" dbkey="PMC13218037" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -13566,6 +13570,8 @@
         <ref dbname="PMC" dbkey="PMC12902793" />
         <ref dbname="PMC" dbkey="PMC13044590" />
         <ref dbname="PMC" dbkey="PMC13105077" />
+        <ref dbname="PMC" dbkey="PMC13243201" />
+        <ref dbname="PMC" dbkey="PMC13253357" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -14308,6 +14314,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC10353192" />
+        <ref dbname="PMC" dbkey="PMC13222857" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -15802,6 +15809,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC11931944" />
+        <ref dbname="PMC" dbkey="PMC13235196" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -18099,6 +18107,7 @@
         <ref dbname="PMC" dbkey="PMC13053676" />
         <ref dbname="PMC" dbkey="PMC13058827" />
         <ref dbname="PMC" dbkey="PMC13131499" />
+        <ref dbname="PMC" dbkey="PMC13262459" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -18310,6 +18319,7 @@
         <ref dbname="PMC" dbkey="PMC12372357" />
         <ref dbname="PMC" dbkey="PMC12637450" />
         <ref dbname="PMC" dbkey="PMC12748969" />
+        <ref dbname="PMC" dbkey="PMC13262459" />
         <ref dbname="PMC" dbkey="PMC6080491" />
         <ref dbname="PMC" dbkey="PMC7979890" />
         <ref dbname="PMC" dbkey="PMC8155058" />
@@ -18491,6 +18501,7 @@
         <ref dbname="PMC" dbkey="PMC12636229" />
         <ref dbname="PMC" dbkey="PMC12689637" />
         <ref dbname="PMC" dbkey="PMC13035944" />
+        <ref dbname="PMC" dbkey="PMC13254825" />
         <ref dbname="PMC" dbkey="PMC5706401" />
         <ref dbname="PMC" dbkey="PMC6132187" />
         <ref dbname="PMC" dbkey="PMC6303945" />
@@ -18980,6 +18991,7 @@
         <ref dbname="PMC" dbkey="PMC12997919" />
         <ref dbname="PMC" dbkey="PMC13044590" />
         <ref dbname="PMC" dbkey="PMC13155123" />
+        <ref dbname="PMC" dbkey="PMC13254825" />
         <ref dbname="PMC" dbkey="PMC5083142" />
         <ref dbname="PMC" dbkey="PMC5494142" />
         <ref dbname="PMC" dbkey="PMC5803269" />
@@ -19221,6 +19233,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn3243404</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn3251018">
+      <name>data</name>
+      <description>data</description>
+      <dates>
+        <date type="submission" value="2015-02-25" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13249883" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn3251018</field>
       </additional_fields>
     </entry>
     <entry id="syn32528196">
@@ -23167,6 +23193,7 @@
         <ref dbname="PMC" dbkey="PMC13187529" />
         <ref dbname="PMC" dbkey="PMC13194528" />
         <ref dbname="PMC" dbkey="PMC13200442" />
+        <ref dbname="PMC" dbkey="PMC13246116" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -23974,6 +24001,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC10539500" />
+        <ref dbname="PMC" dbkey="PMC13216072" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -24067,6 +24095,7 @@
         <ref dbname="PMC" dbkey="PMC12990438" />
         <ref dbname="PMC" dbkey="PMC13063120" />
         <ref dbname="PMC" dbkey="PMC13121454" />
+        <ref dbname="PMC" dbkey="PMC13254825" />
       </cross_references>
       <additional_fields>
         <field name="repository">AD Knowledge Portal</field>
@@ -24166,6 +24195,7 @@
         <ref dbname="PMC" dbkey="PMC12956583" />
         <ref dbname="PMC" dbkey="PMC13134293" />
         <ref dbname="PMC" dbkey="PMC13196751" />
+        <ref dbname="PMC" dbkey="PMC13235196" />
       </cross_references>
       <additional_fields>
         <field name="repository">ARK Portal</field>
@@ -24656,6 +24686,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn52750861</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn52752404">
+      <name>snrnaseq_dutch</name>
+      <description>snrnaseq_dutch</description>
+      <dates>
+        <date type="submission" value="2023-10-20" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13247988" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn52752404</field>
       </additional_fields>
     </entry>
     <entry id="syn52795287">
@@ -28013,6 +28057,20 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn61969052</field>
       </additional_fields>
     </entry>
+    <entry id="syn61987835">
+      <name>Mal-ID</name>
+      <description>Mal-ID</description>
+      <dates>
+        <date type="submission" value="2024-08-09" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13219734" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn61987835</field>
+      </additional_fields>
+    </entry>
     <entry id="syn62110225">
       <name>Spatial Transcriptomic Analysis Identifies a SERPINA3-Expressing Astrocytic State Associated with the Human Neuritic Plaque Microenvironment</name>
       <description>Spatial Transcriptomic Analysis Identifies a SERPINA3-Expressing Astrocytic State Associated with the Human Neuritic Plaque Microenvironment</description>
@@ -28289,6 +28347,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC11945730" />
+        <ref dbname="PMC" dbkey="PMC13235202" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -28704,6 +28763,7 @@
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12486008" />
         <ref dbname="PMC" dbkey="PMC12622183" />
+        <ref dbname="PMC" dbkey="PMC13219410" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -30527,6 +30587,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12632783" />
+        <ref dbname="PMC" dbkey="PMC13243201" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -30704,6 +30765,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12724492" />
+        <ref dbname="PMC" dbkey="PMC13234240" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -30736,6 +30798,34 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn7187923</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn71964948">
+      <name>A Spatially Coordinated Keratinocyte-Fibroblast Circuit Recruits MMP9+ Myeloid Cells to Drive IFN-I-Driven Inflammation in Photosensitive Autoimmunity</name>
+      <description>A Spatially Coordinated Keratinocyte-Fibroblast Circuit Recruits MMP9+ Myeloid Cells to Drive IFN-I-Driven Inflammation in Photosensitive Autoimmunity</description>
+      <dates>
+        <date type="submission" value="2025-12-11" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13226071" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">ARK Portal</field>
+        <field name="full_dataset_link">https://arkportal.synapse.org/Explore/Datasets/DetailsPage?id=71964948</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn71997585">
+      <name>Small RNA Sequencing of Human Skeletal Muscle-Derived Extracellular Vesicles</name>
+      <description>Small RNA Sequencing of Human Skeletal Muscle-Derived Extracellular Vesicles</description>
+      <dates>
+        <date type="submission" value="2025-12-17" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13217694" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn71997585</field>
       </additional_fields>
     </entry>
     <entry id="syn72016012">
