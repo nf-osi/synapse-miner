@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-06-23</release>
-  <release_date>2026-06-23</release_date>
-  <entry_count>2179</entry_count>
+  <release>2026-06-30</release>
+  <release_date>2026-06-30</release_date>
+  <entry_count>2181</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -15315,6 +15315,7 @@
         <ref dbname="PMC" dbkey="PMC12756232" />
         <ref dbname="PMC" dbkey="PMC13028429" />
         <ref dbname="PMC" dbkey="PMC13057115" />
+        <ref dbname="PMC" dbkey="PMC13272441" />
         <ref dbname="PMC" dbkey="PMC9902556" />
       </cross_references>
       <additional_fields>
@@ -23219,6 +23220,8 @@
         <ref dbname="PMC" dbkey="PMC12463240" />
         <ref dbname="PMC" dbkey="PMC12673795" />
         <ref dbname="PMC" dbkey="PMC12695664" />
+        <ref dbname="PMC" dbkey="PMC13271891" />
+        <ref dbname="PMC" dbkey="PMC13272951" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -23740,6 +23743,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn51794252</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn51824537">
+      <name>pGWAS Fenland SomaLogic Summary Statistics</name>
+      <description>pGWAS Fenland SomaLogic Summary Statistics</description>
+      <dates>
+        <date type="submission" value="2023-07-03" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13275128" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn51824537</field>
       </additional_fields>
     </entry>
     <entry id="syn51899720">
@@ -24273,6 +24290,7 @@
         <ref dbname="PMC" dbkey="PMC11952609" />
         <ref dbname="PMC" dbkey="PMC12230629" />
         <ref dbname="PMC" dbkey="PMC12697720" />
+        <ref dbname="PMC" dbkey="PMC13279166" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -31350,6 +31368,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn7417639</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn74297841">
+      <name>Trial registers dataset</name>
+      <description>Trial registers dataset</description>
+      <dates>
+        <date type="submission" value="2026-03-30" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13264465" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn74297841</field>
       </additional_fields>
     </entry>
     <entry id="syn74372113">
