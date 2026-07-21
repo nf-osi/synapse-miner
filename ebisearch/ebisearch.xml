@@ -2,8 +2,8 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-07-14</release>
-  <release_date>2026-07-14</release_date>
+  <release>2026-07-21</release>
+  <release_date>2026-07-21</release_date>
   <entry_count>2185</entry_count>
   <entries>
     <entry id="syn10003873">
