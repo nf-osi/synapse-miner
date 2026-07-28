@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-07-21</release>
-  <release_date>2026-07-21</release_date>
-  <entry_count>2185</entry_count>
+  <release>2026-07-28</release>
+  <release_date>2026-07-28</release_date>
+  <entry_count>2181</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -6324,34 +6324,6 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn1962006</field>
       </additional_fields>
     </entry>
-    <entry id="syn19987071">
-      <name>BAM</name>
-      <description>BAM</description>
-      <dates>
-        <date type="submission" value="2019-06-25" />
-      </dates>
-      <cross_references>
-        <ref dbname="PMC" dbkey="PMC10300032" />
-      </cross_references>
-      <additional_fields>
-        <field name="repository">Synapse</field>
-        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn19987071</field>
-      </additional_fields>
-    </entry>
-    <entry id="syn19989379">
-      <name>BAM</name>
-      <description>BAM</description>
-      <dates>
-        <date type="submission" value="2019-06-25" />
-      </dates>
-      <cross_references>
-        <ref dbname="PMC" dbkey="PMC10300032" />
-      </cross_references>
-      <additional_fields>
-        <field name="repository">Synapse</field>
-        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn19989379</field>
-      </additional_fields>
-    </entry>
     <entry id="syn20048270">
       <name>BDF11121390 final para Synapse 2019.xlsx</name>
       <description>BDF11121390 final para Synapse 2019.xlsx</description>
@@ -6364,21 +6336,6 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn20048270</field>
-      </additional_fields>
-    </entry>
-    <entry id="syn20068543">
-      <name>BAM</name>
-      <description>BAM</description>
-      <dates>
-        <date type="submission" value="2019-06-26" />
-      </dates>
-      <cross_references>
-        <ref dbname="PMC" dbkey="PMC10300032" />
-        <ref dbname="PMC" dbkey="PMC11439699" />
-      </cross_references>
-      <additional_fields>
-        <field name="repository">Synapse</field>
-        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn20068543</field>
       </additional_fields>
     </entry>
     <entry id="syn2019116">
@@ -13027,20 +12984,6 @@
         <field name="full_dataset_link">https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn3159438</field>
       </additional_fields>
     </entry>
-    <entry id="syn24989039">
-      <name>ADMC_ADNI_BakerLipidomics</name>
-      <description>ADMC_ADNI_BakerLipidomics</description>
-      <dates>
-        <date type="submission" value="2021-02-24" />
-      </dates>
-      <cross_references>
-        <ref dbname="PMC" dbkey="PMC12132299" />
-      </cross_references>
-      <additional_fields>
-        <field name="repository">AD Knowledge Portal</field>
-        <field name="full_dataset_link">https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn24989039</field>
-      </additional_fields>
-    </entry>
     <entry id="syn24994804">
       <name>Stress and Recovery in Frontline COVID-19 Health Care Workers Study</name>
       <description>Stress and Recovery in Frontline COVID-19 Health Care Workers Study</description>
@@ -18146,21 +18089,6 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn31512863</field>
-      </additional_fields>
-    </entry>
-    <entry id="syn31513378">
-      <name>ADMC_ADNI_UHawaiiGutMetabolites</name>
-      <description>ADMC_ADNI_UHawaiiGutMetabolites</description>
-      <dates>
-        <date type="submission" value="2022-06-01" />
-      </dates>
-      <cross_references>
-        <ref dbname="PMC" dbkey="PMC10916590" />
-        <ref dbname="PMC" dbkey="PMC11076546" />
-      </cross_references>
-      <additional_fields>
-        <field name="repository">AD Knowledge Portal</field>
-        <field name="full_dataset_link">https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn31513378</field>
       </additional_fields>
     </entry>
     <entry id="syn31534849">
@@ -27463,8 +27391,8 @@
       </additional_fields>
     </entry>
     <entry id="syn61001870">
-      <name>MGv2.0_cross-disease_microglial_heterogeneity</name>
-      <description>MGv2.0_cross-disease_microglial_heterogeneity</description>
+      <name>Microglia Atlas v3</name>
+      <description>Microglia Atlas v3</description>
       <dates>
         <date type="submission" value="2024-06-13" />
       </dates>
@@ -29598,6 +29526,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn68349250</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn68602065">
+      <name>SleepChart</name>
+      <description>SleepChart</description>
+      <dates>
+        <date type="submission" value="2025-07-07" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC12363694" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn68602065</field>
       </additional_fields>
     </entry>
     <entry id="syn68690323">
