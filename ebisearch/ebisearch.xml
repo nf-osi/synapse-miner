@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-08-04</release>
-  <release_date>2026-08-04</release_date>
-  <entry_count>2181</entry_count>
+  <release>2026-08-11</release>
+  <release_date>2026-08-11</release_date>
+  <entry_count>2182</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -29343,6 +29343,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn66399325</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn66400980">
+      <name>PDBP CSF NULISA Dataset</name>
+      <description>PDBP CSF NULISA Dataset</description>
+      <dates>
+        <date type="submission" value="2025-05-05" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC12259125" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn66400980</field>
       </additional_fields>
     </entry>
     <entry id="syn66477498">
