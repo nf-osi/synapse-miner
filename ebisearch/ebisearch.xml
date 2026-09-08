@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-09-01</release>
-  <release_date>2026-09-01</release_date>
-  <entry_count>2181</entry_count>
+  <release>2026-09-08</release>
+  <release_date>2026-09-08</release_date>
+  <entry_count>2182</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -17516,6 +17516,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12853123" />
+        <ref dbname="PMC" dbkey="PMC13321088" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -23464,6 +23465,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC13099382" />
+        <ref dbname="PMC" dbkey="PMC13324718" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -24042,6 +24044,7 @@
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12232211" />
         <ref dbname="PMC" dbkey="PMC12853123" />
+        <ref dbname="PMC" dbkey="PMC13321088" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -24094,6 +24097,7 @@
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12036471" />
         <ref dbname="PMC" dbkey="PMC12214559" />
+        <ref dbname="PMC" dbkey="PMC13324857" />
       </cross_references>
       <additional_fields>
         <field name="repository">AD Knowledge Portal</field>
@@ -29428,6 +29432,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn68150215</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn68293899">
+      <name>Emory_Levey_300_CSF_FNIH</name>
+      <description>Emory_Levey_300_CSF_FNIH</description>
+      <dates>
+        <date type="submission" value="2025-06-13" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13321088" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn68293899</field>
       </additional_fields>
     </entry>
     <entry id="syn6829807">
