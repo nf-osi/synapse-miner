@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-09-08</release>
-  <release_date>2026-09-08</release_date>
-  <entry_count>2182</entry_count>
+  <release>2026-09-15</release>
+  <release_date>2026-09-15</release_date>
+  <entry_count>2181</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -27128,23 +27128,6 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn59651013</field>
-      </additional_fields>
-    </entry>
-    <entry id="syn59804727">
-      <name>rawfiles</name>
-      <description>rawfiles</description>
-      <dates>
-        <date type="submission" value="2024-05-22" />
-      </dates>
-      <cross_references>
-        <ref dbname="PMC" dbkey="PMC12485993" />
-        <ref dbname="PMC" dbkey="PMC12633097" />
-        <ref dbname="PMC" dbkey="PMC12636643" />
-        <ref dbname="PMC" dbkey="PMC12642759" />
-      </cross_references>
-      <additional_fields>
-        <field name="repository">Synapse</field>
-        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn59804727</field>
       </additional_fields>
     </entry>
     <entry id="syn59808546">
