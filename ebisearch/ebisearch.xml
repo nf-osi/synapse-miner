@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-10-20</release>
-  <release_date>2026-10-20</release_date>
-  <entry_count>2181</entry_count>
+  <release>2026-10-27</release>
+  <release_date>2026-10-27</release_date>
+  <entry_count>2180</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -27375,21 +27375,6 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn60959798</field>
-      </additional_fields>
-    </entry>
-    <entry id="syn61001870">
-      <name>Microglia Atlas v3</name>
-      <description>Microglia Atlas v3</description>
-      <dates>
-        <date type="submission" value="2024-06-13" />
-      </dates>
-      <cross_references>
-        <ref dbname="PMC" dbkey="PMC11974870" />
-        <ref dbname="PMC" dbkey="PMC12307561" />
-      </cross_references>
-      <additional_fields>
-        <field name="repository">Synapse</field>
-        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn61001870</field>
       </additional_fields>
     </entry>
     <entry id="syn6100410">
