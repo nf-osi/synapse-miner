@@ -26,7 +26,9 @@ class ProcessingTracker:
         Get the last processed PMC ID from tracking file.
         
         Returns:
-            The starting PMC ID of the last processed batch, or None if not found
+            The last PMC ID covered by the last processed batch file (older
+            tracking files stored the batch's starting PMC ID instead), or None
+            if not found
         """
         try:
             if self.tracking_file.exists():
@@ -43,7 +45,7 @@ class ProcessingTracker:
         Update the last processed PMC ID in tracking file.
         
         Args:
-            pmc_id: The starting PMC ID of the batch that was processed
+            pmc_id: The ending PMC ID of the batch file that was processed
             
         Returns:
             True if successful, False otherwise
@@ -81,3 +83,39 @@ class ProcessingTracker:
         if match:
             return match.group(1)
         return None
+
+    def extract_ending_pmc_id(self, filename: str) -> Optional[str]:
+        """
+        Extract the ending PMC ID from a filename.
+        
+        Args:
+            filename: Filename like 'PMC11890001_PMC11900000.xml.gz'
+            
+        Returns:
+            The ending PMC ID like 'PMC11900000'
+        """
+        import re
+        match = re.search(r'PMC\d+_(PMC\d+)', filename)
+        if match:
+            return match.group(1)
+        return None
+
+    def get_resume_pmc_id(self) -> Optional[str]:
+        """
+        Get the first PMC ID not yet covered by a processed batch file.
+        
+        Batch files are processed from the first one whose starting PMC ID is
+        >= this value, so the last processed file is not reprocessed.
+        
+        Returns:
+            The PMC ID one past the last processed PMC ID, or None if not found
+        """
+        last_pmc_id = self.get_last_processed_pmc_id()
+        if not last_pmc_id:
+            return None
+        import re
+        match = re.fullmatch(r'PMC(\d+)', last_pmc_id)
+        if not match:
+            logger.warning(f"Unexpected PMC ID in tracking file: {last_pmc_id}")
+            return None
+        return f"PMC{int(match.group(1)) + 1}"

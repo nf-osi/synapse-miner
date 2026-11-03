@@ -311,7 +311,6 @@ def run_automated_workflow(args, logger):
     """Run the automated weekly workflow with Synapse integration."""
     import os
     import glob
-    from pathlib import Path
     
     try:
         # Initialize tracker
@@ -340,10 +339,13 @@ def run_automated_workflow(args, logger):
         # Determine start file based on last processed PMC ID
         start_from = None
         if last_pmc_id:
-            # Simply use the last processed PMC ID as start_from
-            # The core.py will handle finding the next available batch
-            start_from = last_pmc_id
-            logger.info(f"Will start from PMC ID >= {last_pmc_id}")
+            # Start just past the last processed PMC ID so the last processed
+            # file isn't reprocessed; core.py finds the next available batch
+            start_from = tracker.get_resume_pmc_id()
+            if not start_from:
+                logger.error(f"Could not determine resume point from tracking file value: {last_pmc_id}")
+                sys.exit(1)
+            logger.info(f"Will start from PMC ID >= {start_from}")
             
         # Clean up any existing batch files from previous runs
         batch_pattern = f"{args.output}.*.csv"
@@ -358,7 +360,7 @@ def run_automated_workflow(args, logger):
         # Process files from HTTP server
         logger.info(f"Starting processing from URL: {args.url}")
         try:
-            miner.process_http_files(
+            last_processed_file = miner.process_http_files(
                 base_url=args.url,
                 output_path=args.output,
                 start_from=start_from,
@@ -368,50 +370,44 @@ def run_automated_workflow(args, logger):
             logger.error(f"Failed to process files from HTTP server: {e}")
             sys.exit(1)
         
+        if not last_processed_file:
+            logger.warning("No new files were processed")
+            return
+        
         # Find generated batch files
         batch_files = glob.glob(batch_pattern)
         batch_files.sort()  # Process in order
         
-        if not batch_files:
-            logger.warning("No batch files were generated")
-            return
+        if batch_files:
+            logger.info(f"Found {len(batch_files)} batch files to upload")
             
-        logger.info(f"Found {len(batch_files)} batch files to upload")
-        
-        # Upload batch files and results to Synapse
-        try:
-            success = synapse_uploader.batch_upload_workflow(
-                batch_files=batch_files,
-                folder_id=args.folder_id,
-                table_id=args.table_id
-            )
-        except Exception as e:
-            logger.error(f"Failed during Synapse upload workflow: {e}")
-            sys.exit(1)
-        
-        if success:
-            # Update tracking file with the last processed batch
-            # Extract PMC ID from the last batch file processed
-            last_batch_file = batch_files[-1]
-            filename = Path(last_batch_file).name
+            # Upload batch files and results to Synapse
+            try:
+                success = synapse_uploader.batch_upload_workflow(
+                    batch_files=batch_files,
+                    folder_id=args.folder_id,
+                    table_id=args.table_id
+                )
+            except Exception as e:
+                logger.error(f"Failed during Synapse upload workflow: {e}")
+                sys.exit(1)
             
-            # Extract the XML filename from the batch filename
-            # Format: results.csv.{xml_filename}.csv
-            parts = filename.split('.')
-            if len(parts) >= 3:
-                xml_filename = '.'.join(parts[2:-1])  # Get middle parts
-                last_processed_pmc = tracker.extract_starting_pmc_id(xml_filename)
-                
-                if last_processed_pmc:
-                    tracker.update_last_processed_pmc_id(last_processed_pmc)
-                    logger.info(f"Updated tracking file with last processed PMC ID: {last_processed_pmc}")
-                else:
-                    logger.warning(f"Could not extract PMC ID from filename: {xml_filename}")
-            
-            logger.info("Workflow completed successfully")
+            if not success:
+                logger.error("Workflow failed during Synapse upload")
+                sys.exit(1)
         else:
-            logger.error("Workflow failed during Synapse upload")
-            sys.exit(1)
+            logger.info("No Synapse IDs found in processed files; nothing to upload")
+        
+        # Update tracking file with the end of the last processed file, even if
+        # it had no findings, so the next run starts with the following file
+        last_processed_pmc = tracker.extract_ending_pmc_id(last_processed_file)
+        if last_processed_pmc:
+            tracker.update_last_processed_pmc_id(last_processed_pmc)
+            logger.info(f"Updated tracking file with last processed PMC ID: {last_processed_pmc}")
+        else:
+            logger.warning(f"Could not extract PMC ID from filename: {last_processed_file}")
+        
+        logger.info("Workflow completed successfully")
             
     except Exception as e:
         logger.error(f"Error in automated workflow: {e}")

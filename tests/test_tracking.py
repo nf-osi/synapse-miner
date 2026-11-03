@@ -82,3 +82,30 @@ def test_tracker_error_handling():
     # Test writing to invalid path
     tracker = ProcessingTracker("/non/existent/path/file.json")
     assert tracker.update_last_processed_pmc_id("PMC123456") is False
+def test_extract_ending_pmc_id():
+    """Test extracting the ending PMC ID from filenames."""
+    tracker = ProcessingTracker()
+    
+    assert tracker.extract_ending_pmc_id("PMC11890001_PMC11900000.xml.gz") == "PMC11900000"
+    assert tracker.extract_ending_pmc_id("PMC13710763_PMC13710763.xml.gz") == "PMC13710763"
+    assert tracker.extract_ending_pmc_id("invalid_filename.xml.gz") is None
+    assert tracker.extract_ending_pmc_id("PMC123456.xml.gz") is None
+
+def test_get_resume_pmc_id():
+    """Test that resumption starts just past the last processed PMC ID."""
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        tracking_file = f.name
+    
+    try:
+        tracker = ProcessingTracker(tracking_file)
+        assert tracker.get_resume_pmc_id() is None
+        
+        tracker.update_last_processed_pmc_id("PMC11900000")
+        assert tracker.get_resume_pmc_id() == "PMC11900001"
+        
+        tracker.update_last_processed_pmc_id("not-a-pmc-id")
+        assert tracker.get_resume_pmc_id() is None
+        
+    finally:
+        if os.path.exists(tracking_file):
+            os.remove(tracking_file)
