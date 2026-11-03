@@ -41,7 +41,7 @@ print(f"Last processed: {last_id}")
 ```bash
 # Test basic HTTP processing (downloads small amount)
 synapse-miner http \
-  -u https://europepmc.org/ftp/oa/ \
+  -u https://ftp.ebi.ac.uk/pub/databases/pmc/oa/ \
   -o test_results.csv \
   -m 1 \
   --verbose

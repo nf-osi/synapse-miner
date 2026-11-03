@@ -321,18 +321,23 @@ class SynapseMiner:
         
     def process_http_files(self, base_url: str, output_path: str, 
                          start_from: Optional[str] = None, 
-                         max_files: Optional[int] = None) -> None:
+                         max_files: Optional[int] = None) -> Optional[str]:
         """
         Process XML files from an HTTP server.
-        
+
         Args:
             base_url: Base URL of the HTTP server
             output_path: Path to save results
             start_from: Filename to start processing from
             max_files: Maximum number of files to process
+
+        Returns:
+            Filename of the last file processed successfully (whether or not it
+            contained any Synapse IDs), or None if no file was processed
         """
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
+        last_processed_file = None
         
         try:
             # Get directory listing
@@ -473,7 +478,8 @@ class SynapseMiner:
                         # Remove downloaded file
                         os.remove(local_path)
                         logger.info(f"Removed downloaded file: {local_path}")
-                        
+                        last_processed_file = os.path.basename(file_url)
+
                         # Update progress with number of Synapse IDs found
                         progress.update(task, 
                                      description=f"Processing files (found {len(all_findings)} Synapse IDs)")
@@ -488,7 +494,9 @@ class SynapseMiner:
                 logger.info(f"Final save: {len(all_findings)} total findings saved to {output_path}")
             else:
                 logger.warning("No findings to save")
-                
+
+            return last_processed_file
+
         finally:
             # Clean up
             shutil.rmtree(temp_dir)

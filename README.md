@@ -24,7 +24,7 @@ Download and process XML files from the Europe PMC Open Access subset.
 
 ```bash
 synapse-miner http \
-  -u https://europepmc.org/ftp/oa/ \
+  -u https://ftp.ebi.ac.uk/pub/databases/pmc/oa/ \
   -o results.csv \
   [-s PMC3000001_PMC3010000.xml.gz]  # start from a specific batch
   [-m 2]                              # limit number of files (useful for testing)

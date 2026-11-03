@@ -7,7 +7,7 @@ This guide provides detailed instructions for using the Synapse ID Miner to extr
 The most basic command to process files from Europe PMC:
 
 ```bash
-synapse-miner http -u https://europepmc.org/ftp/oa/ -o results.csv
+synapse-miner http -u https://ftp.ebi.ac.uk/pub/databases/pmc/oa/ -o results.csv
 ```
 
 This will:
@@ -22,7 +22,7 @@ This will:
 To start processing from a specific file:
 
 ```bash
-synapse-miner http -u https://europepmc.org/ftp/oa/ -o results.csv -s PMC3000001_PMC3010000.xml.gz
+synapse-miner http -u https://ftp.ebi.ac.uk/pub/databases/pmc/oa/ -o results.csv -s PMC3000001_PMC3010000.xml.gz
 ```
 
 This is useful for:
@@ -35,7 +35,7 @@ This is useful for:
 To process only a certain number of files:
 
 ```bash
-synapse-miner http -u https://europepmc.org/ftp/oa/ -o results.csv -m 5
+synapse-miner http -u https://ftp.ebi.ac.uk/pub/databases/pmc/oa/ -o results.csv -m 5
 ```
 
 This will:
@@ -48,7 +48,7 @@ This will:
 You can combine options to process a specific number of files starting from a particular point:
 
 ```bash
-synapse-miner http -u https://europepmc.org/ftp/oa/ -o results.csv -s PMC3000001_PMC3010000.xml.gz -m 2
+synapse-miner http -u https://ftp.ebi.ac.uk/pub/databases/pmc/oa/ -o results.csv -s PMC3000001_PMC3010000.xml.gz -m 2
 ```
 
 ## Combining Results Files
@@ -136,7 +136,7 @@ miner = SynapseMiner()
 
 # Process files with all options
 miner.process_http_files(
-    base_url="https://europepmc.org/ftp/oa/",
+    base_url="https://ftp.ebi.ac.uk/pub/databases/pmc/oa/",
     output_path="results.csv",
     start_from="PMC3000001_PMC3010000.xml.gz",
     max_files=2

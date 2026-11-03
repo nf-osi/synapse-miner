@@ -113,3 +113,31 @@ def test_generate_summary():
     
     # Check top mentioned IDs
     assert summary["top_mentioned_ids"]["syn1234567"] == 2  # In both docs
+def test_process_http_files_resume_and_last_file(tmp_path, monkeypatch):
+    """Resuming skips the last processed file, and the last processed file is
+    returned even when it contains no Synapse IDs."""
+    import gzip
+    import shutil
+    
+    files = ["PMC1_PMC100.xml.gz", "PMC101_PMC200.xml.gz", "PMC250_PMC300.xml.gz"]
+    listing = "".join(f'<a href="{name}">{name}</a>' for name in files)
+    article = "<article><body><p>No Synapse IDs in this article.</p></body></article>"
+    source = tmp_path / "source.xml.gz"
+    with gzip.open(source, "wt") as f:
+        f.write(f"<articles>{article}</articles>")
+    
+    downloaded = []
+    def fake_urlretrieve(url, local_path, reporthook=None):
+        downloaded.append(os.path.basename(url))
+        shutil.copy(source, local_path)
+    
+    miner = SynapseMiner()
+    monkeypatch.setattr(miner, "_make_request", lambda url: listing)
+    monkeypatch.setattr("urllib.request.urlretrieve", fake_urlretrieve)
+    
+    # Tracking file recorded PMC100 (end of the first file), so resume at PMC101
+    last_file = miner.process_http_files("http://example.org/", str(tmp_path / "out.csv"),
+                                         start_from="PMC101")
+    
+    assert downloaded == ["PMC101_PMC200.xml.gz", "PMC250_PMC300.xml.gz"]
+    assert last_file == "PMC250_PMC300.xml.gz"

@@ -63,19 +63,19 @@ The workflow uses `last_processed_pmc.json` to track progress:
 
 ```json
 {
-  "last_processed_pmc_id": "PMC11890001",
+  "last_processed_pmc_id": "PMC11900000",
   "updated_at": "2024-06-26T14:30:00.123456",
   "description": "This file tracks the last processed PMC ID for the weekly mining workflow."
 }
 ```
 
-- **Starting PMC ID**: Extracted from filename like `PMC11890001_PMC11900000.xml.gz`
-- **Resumption Logic**: Next run starts from batches with PMC ID ≥ last processed ID
+- **Last processed PMC ID**: The ending PMC ID of the last file processed, extracted from a filename like `PMC11890001_PMC11900000.xml.gz`. It advances whether or not that file contained any Synapse IDs.
+- **Resumption Logic**: Next run starts from the first batch whose starting PMC ID is greater than the last processed ID, so no file is processed twice (older tracking files that stored a starting PMC ID resume correctly too)
 - **Overlap Handling**: Deduplication ensures no duplicate PMC IDs in the table
 
 ### File Processing
 
-1. **Download**: XML files from `https://europepmc.org/ftp/oa/`
+1. **Download**: XML files from `https://ftp.ebi.ac.uk/pub/databases/pmc/oa/`
 2. **Processing**: Extract Synapse IDs with context from each article
 3. **Batch Files**: Individual CSV files for each XML file processed
 4. **Main Results**: Aggregated CSV with all findings
