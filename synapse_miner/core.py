@@ -109,6 +109,12 @@ def process_article(article_xml: str, context_size: int) -> Tuple[Optional[str],
         back = root.find(".//back")
         if back is not None:
             text_parts.append(extract_text(back))
+
+        # Extract from tables and figures placed outside the body (NCBI PMC
+        # full text puts them in a floats group)
+        floats = root.find(".//floats-group")
+        if floats is not None:
+            text_parts.append(extract_text(floats))
                     
         # Join all text parts with spaces and clean up whitespace
         text = ' '.join(text_parts)
