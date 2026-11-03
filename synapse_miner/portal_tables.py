@@ -247,6 +247,27 @@ def not_added(classified: pd.DataFrame, existing: Set[Tuple[str, str]]) -> pd.Da
     return low[keep]
 
 
+def left_out_key(row) -> str:
+    """Stable key for a left-out pair: '<pmid, else pmcid, else doi>|<study>'."""
+    paper = _pmid_digits(row.pmid) or (row.pmcid if not _missing(row.pmcid) else "") or _doi_key(row.doi)
+    return f"{paper}|{row.study_id}"
+
+
+def load_reported(path: str) -> Set[str]:
+    """Left-out pair keys already reported in an issue."""
+    try:
+        with open(path) as f:
+            return set(json.load(f).get("reported", []))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+
+def save_reported(path: str, keys: Set[str]) -> None:
+    with open(path, "w") as f:
+        json.dump({"reported": sorted(keys)}, f, indent=2)
+        f.write("\n")
+
+
 def update_preprint_rows(syn, table_id: str, epmc, cited_by: bool = False) -> Tuple[List[Dict], List[Dict]]:
     """
     Point rows for preprints at their published versions, in place.
@@ -258,6 +279,12 @@ def update_preprint_rows(syn, table_id: str, epmc, cited_by: bool = False) -> Tu
     If the table already has the published version for the same study, the
     preprint row would become a duplicate, so it is reported for removal by
     hand instead (this package never deletes rows).
+
+    Rows are changed with a partial-row update targeted by ROW_ID and
+    checked against each row's etag, not Table.upsert_rows: upsert cannot
+    key on studyId (a list column), needs its key values to be unique (a
+    paper has one row per study), and cannot change its key (the PMID is
+    what changes here).
 
     Returns:
         (rows updated, rows to remove by hand), each a list of dicts with
@@ -323,7 +350,8 @@ def _paper_link(pmid: str, title: str) -> str:
 
 def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dict]] = None,
                  to_remove: Optional[List[Dict]] = None,
-                 left_out: Optional[pd.DataFrame] = None) -> Optional[Tuple[str, str]]:
+                 left_out: Optional[pd.DataFrame] = None,
+                 left_out_total: Optional[int] = None) -> Optional[Tuple[str, str]]:
     """
     Title and Markdown body for an issue listing this run's changes, or None
     when the run changed nothing.
@@ -332,22 +360,26 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
         additions: table ID -> rows appended to it in this run (lowest confidence listed first)
         replaced: preprint rows updated to their published versions
         to_remove: preprint rows that duplicate their published version
-        left_out: low-confidence pairs not added to either table (listed, but
-            on their own never trigger an issue)
+        left_out: low-confidence pairs left out of both tables that have not
+            been reported in an earlier issue
+        left_out_total: all low-confidence pairs currently left out, including
+            ones reported before (defaults to len(left_out))
     """
     replaced, to_remove = replaced or [], to_remove or []
     left_out = left_out if left_out is not None else pd.DataFrame()
     total = sum(len(df) for df in additions.values())
-    if not (total or replaced or to_remove):
+    if not (total or replaced or to_remove or not left_out.empty):
         return None
+    left_out_total = len(left_out) if left_out_total is None else left_out_total
     url = run_url()
     summary = [f"{total} rows added"] + ([f"{len(replaced)} preprints replaced by their published versions"]
                                          if replaced else []) \
-              + ([f"{len(to_remove)} preprint rows to remove by hand"] if to_remove else [])
+              + ([f"{len(to_remove)} preprint rows to remove by hand"] if to_remove else []) \
+              + ([f"{len(left_out)} new low-confidence pairs not added"] if not left_out.empty else [])
     lines = [
-        f"This run changed the NF Data Portal publication tables: {', '.join(summary)}. "
+        f"This run of the NF Data Portal publication pipeline: {', '.join(summary)}. "
         "Please check the additions, especially the lower-confidence rows at the top of each table, "
-        "and fix or remove any that are wrong.",
+        "and fix or remove any that are wrong. Add any left-out pairs that belong by hand.",
         "",
         "- **primary** rows go to the publications table: the paper generated or deposited the study's data.",
         "- **secondary / review / mention** rows go to the Cited By table: the paper reused, "
@@ -387,9 +419,13 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
                   f"| PMID:{r['published_pmid']} | {', '.join(r['studies'])} |" for r in to_remove]
         lines.append("")
     if not left_out.empty:
-        lines += [f"### Not added: {len(left_out)} low-confidence pairs", "",
-                  "These were left out of both tables. Add any that belong by hand.", "",
-                  "<details><summary>Show them</summary>", "",
+        earlier = left_out_total - len(left_out)
+        lines += [f"### Not added: {len(left_out)} new low-confidence pairs", "",
+                  "These were left out of both tables (unclear, or primary with low confidence). "
+                  "Add any that belong by hand."
+                  + (f" {earlier} more were reported in earlier issues and are still left out; all "
+                     f"{left_out_total} are in the run's `classified_publications.csv`." if earlier > 0 else ""),
+                  "", "<details><summary>Show them</summary>", "",
                   "| Relationship | Paper | Study | Reason |", "|---|---|---|---|"]
         for row in left_out.itertuples(index=False):
             pmid = _pmid_digits(row.pmid)
@@ -397,7 +433,9 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
             lines.append(f"| {row.relationship} ({row.confidence}) | {paper} | {row.study_id} "
                          f"| {str(row.reason).replace('|', '/')} |")
         lines += ["", "</details>", ""]
-    title = f"Review publication table changes ({pd.Timestamp.today().date().isoformat()})"
+    title = (f"Review publication table changes ({pd.Timestamp.today().date().isoformat()})"
+             if (total or replaced or to_remove) else
+             f"Review {len(left_out)} low-confidence publication pairs ({pd.Timestamp.today().date().isoformat()})")
     body = "\n".join(lines)
     if len(body) > _MAX_ISSUE_BODY:
         cut = body.rfind("\n", 0, _MAX_ISSUE_BODY - 200)

@@ -113,9 +113,11 @@ jobs:
           --primary-output primary_publications.csv \
           --cited-by-table syn78484103 \
           --add-primary-publications \
-          --review-issue-output review_issue.md
+          --review-issue-output review_issue.md \
+          --reported-file reported_low_confidence.json
 
     - name: Open an issue to review new publication rows
+      id: review_issue
       if: always() && hashFiles('review_issue.md') != ''
       env:
         GH_TOKEN: ${{ github.token }}
@@ -126,6 +128,21 @@ jobs:
           --title "$(cat review_issue.md.title)" \
           --body-file review_issue.md \
           --label publication-review
+
+    - name: Commit reported low-confidence pairs
+      # Only once the issue exists, so a failed issue does not mark pairs as reported
+      if: always() && steps.review_issue.outcome == 'success'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add reported_low_confidence.json
+        if git diff --staged --quiet; then
+          echo "No new reported pairs"
+        else
+          git commit -m "Update reported low-confidence publication pairs [skip ci]"
+          git pull --rebase
+          git push
+        fi
 
     - name: Upload workflow artifacts
       uses: actions/upload-artifact@v4

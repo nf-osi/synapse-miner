@@ -11,7 +11,8 @@ from synapse_miner import portal_tables
 from synapse_miner.classify import use_published_versions
 from synapse_miner.portal_tables import (
     CITED_BY_COLUMNS, PUBLICATION_COLUMNS, _for_upload, append_rows, build_cited_by,
-    build_primary, drop_existing_pairs, not_added, pair_keys, review_issue, update_preprint_rows,
+    build_primary, drop_existing_pairs, left_out_key, load_reported, not_added, pair_keys, review_issue,
+    save_reported, update_preprint_rows,
 )
 from synapse_miner.utils import synapse_safety
 
@@ -229,15 +230,17 @@ def test_preprint_row_duplicating_its_published_version_is_left_for_a_human(monk
     assert not any(c[0] in ("store", "snapshot") for c in syn.calls)
 
 
-def test_issue_lists_low_confidence_pairs_not_added_but_they_alone_do_not_open_one():
+def test_left_out_low_confidence_pairs_open_an_issue_on_their_own():
     classified = pd.DataFrame([_row("syn4939902", "unclear", confidence="low", reason="no full text"),
                                _row("syn11638893", "primary", confidence="low", reason="weak")])
     left_out = not_added(classified, set())
     assert len(left_out) == 2
     empty = build_cited_by(DEHNER, STUDIES).iloc[0:0]
-    assert review_issue({"syn78484103": empty}, left_out=left_out) is None
-    _, body = review_issue({"syn78484103": build_cited_by(DEHNER, STUDIES)}, left_out=left_out)
-    assert "Not added: 2 low-confidence pairs" in body
+    title, body = review_issue({"syn78484103": empty}, left_out=left_out, left_out_total=5)
+    assert title.startswith("Review 2 low-confidence publication pairs")
+    assert "Not added: 2 new low-confidence pairs" in body
+    assert "3 more were reported in earlier issues" in body
+    assert review_issue({"syn78484103": empty}, left_out=left_out.iloc[0:0]) is None
     # A pair already in a table is not reported as left out
     assert len(not_added(classified, pair_keys(pd.DataFrame(
         {"pmid": ["PMID:33591953"], "doi": [None], "studyId": [["syn4939902"]]})))) == 1
@@ -250,3 +253,13 @@ def test_issue_reports_replaced_and_duplicate_preprints():
     _, body = review_issue({"syn16857542": empty}, replaced=[record], to_remove=[record])
     assert "Preprints replaced by their published versions (1)" in body
     assert "Preprint rows to remove by hand (1)" in body
+
+
+def test_reported_pairs_round_trip(tmp_path):
+    classified = pd.DataFrame([_row("syn4939902", "unclear", confidence="low", reason="r")])
+    keys = {left_out_key(r) for r in not_added(classified, set()).itertuples(index=False)}
+    assert keys == {"33591953|syn4939902"}
+    path = str(tmp_path / "reported.json")
+    assert load_reported(path) == set()
+    save_reported(path, keys)
+    assert load_reported(path) == keys

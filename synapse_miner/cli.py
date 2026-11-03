@@ -307,7 +307,14 @@ def main() -> None:
         )
         classify_parser.add_argument(
             "--review-issue-output",
-            help="When rows were appended, write a review issue body here (and its title to <path>.title)"
+            help="When rows were added or updated, or new low-confidence pairs were left out, write a "
+                 "review issue body here (and its title to <path>.title)"
+        )
+        classify_parser.add_argument(
+            "--reported-file",
+            default="reported_low_confidence.json",
+            help="JSON of left-out low-confidence pairs already reported in an issue, so each is reported "
+                 "once (default: reported_low_confidence.json)"
         )
         classify_parser.add_argument(
             "--synapse-pat",
@@ -634,8 +641,8 @@ def run_classify_workflow(args, logger):
     import os
     from synapse_miner.portal_tables import (
         CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, build_cited_by, build_primary,
-        create_cited_by_table, drop_existing_pairs, load_pair_keys, not_added, review_issue,
-        update_preprint_rows,
+        create_cited_by_table, drop_existing_pairs, left_out_key, load_pair_keys, load_reported,
+        not_added, review_issue, save_reported, update_preprint_rows,
     )
     from synapse_miner.classify import classify_publications
     from synapse_miner.utils.europepmc_client import EuropePMCClient
@@ -707,17 +714,23 @@ def run_classify_workflow(args, logger):
         logger.error(f"Failed to update the portal publication tables: {e}")
         failed = True
 
-    # Changes made before a failure still get a review issue
-    issue = review_issue(additions, replaced, to_remove, not_added(results, existing))
+    # Changes made before a failure still get a review issue. Left-out pairs
+    # are listed once, when first left out, not on every run.
+    left_out = not_added(results, existing)
+    left_out_keys = {left_out_key(row) for row in left_out.itertuples(index=False)}
+    reported = load_reported(args.reported_file)
+    new_left_out = left_out[[left_out_key(row) not in reported for row in left_out.itertuples(index=False)]]
+    issue = review_issue(additions, replaced, to_remove, new_left_out, left_out_total=len(left_out))
     if issue and args.review_issue_output:
         title, body = issue
         with open(args.review_issue_output, "w") as f:
             f.write(body)
         with open(f"{args.review_issue_output}.title", "w") as f:
             f.write(title)
+        save_reported(args.reported_file, reported | left_out_keys)
         logger.info(f"Wrote review issue to {args.review_issue_output}")
     elif not issue:
-        logger.info("No rows were added or replaced; no review issue needed")
+        logger.info("Nothing added, replaced or newly left out; no review issue needed")
     if failed:
         sys.exit(1)
 
