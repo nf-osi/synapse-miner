@@ -220,13 +220,19 @@ def classify_mention(sentence: str, synid: str, section: str = "") -> Tuple[str,
 
 
 def _section_context(text: str) -> Tuple[str, str]:
-    """Label a section 'reuse' or 'deposit' when only one kind of wording appears in it."""
-    reuse = next((m.group(0) for p in _REUSE_RE for m in [p.search(text)] if m), "")
-    deposit = next((m.group(0) for p in _DEPOSIT_RE for m in [p.search(text)] if m), "")
-    if reuse and not deposit:
-        return "reuse", f"section context: {reuse}"
-    if deposit and not reuse:
-        return "deposit", f"section context: {deposit}"
+    """
+    Label a section 'reuse' or 'deposit' by whichever wording it uses more.
+
+    e.g. Banerjee et al. 2020 says "downloaded" three times and "uploaded to
+    the NF Data Portal" once (for its reprocessed files) while listing the
+    studies it drew data from. A tie leaves the mention as a citation.
+    """
+    reuse = [m.group(0) for p in _REUSE_RE for m in p.finditer(text)]
+    deposit = [m.group(0) for p in _DEPOSIT_RE for m in p.finditer(text)]
+    if len(reuse) > len(deposit):
+        return "reuse", f"section context: {reuse[0]}"
+    if len(deposit) > len(reuse):
+        return "deposit", f"section context: {deposit[0]}"
     return "cite", ""
 
 
