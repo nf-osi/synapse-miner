@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 CITED_BY_RELATIONSHIPS = ("secondary", "review", "mention")
 
-# Same names, types and limits as syn16857542, then columns specific to Cited By
+# Same names, types and limits as syn16857542 (publicationType is also faceted
+# here, to filter secondary/review/mention), then columns specific to Cited By
 CITED_BY_SCHEMA = [
     {"name": "doi", "columnType": "LARGETEXT"},
     {"name": "diseaseFocus", "columnType": "STRING", "maximumSize": 30, "facetType": "enumeration"},

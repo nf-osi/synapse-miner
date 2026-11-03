@@ -162,6 +162,7 @@ Multiple rows per article are expected and intentional: a paper can reference th
 |----------|----|
 | Batch file folder | [syn66046437](https://www.synapse.org/Synapse/syn66046437) |
 | Results table | [syn66047339](https://www.synapse.org/Synapse/syn66047339) |
+| Cited By table | [syn78484103](https://www.synapse.org/Synapse/syn78484103) |
 
 ## Automated workflows
 
@@ -173,7 +174,7 @@ Runs every **Monday at 22:00 UTC**.
 - Uploads batch CSVs to the Synapse folder and new rows to the results table
 - Commits the updated tracking file back to the repository
 - Runs `search` for articles outside the Open Access download, adding new rows to the results table
-- Runs `classify` and attaches `classified_publications.csv` to the run's artifacts
+- Runs `classify`, replaces the rows of the Cited By table ([syn78484103](https://www.synapse.org/Synapse/syn78484103)), and attaches `classified_publications.csv` and `cited_by.csv` to the run's artifacts
 
 Can be triggered manually from the Actions tab with an optional `max_files` parameter for testing, and `recheck_existing` to re-mine articles already in the table (a one-off backfill of IDs older parser versions missed).
 
