@@ -12,6 +12,11 @@ on:
         required: false
         default: ''
         type: string
+      recheck_existing:
+        description: 'Search: also re-mine articles already in the table (one-off backfill)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   mine-synapse-ids:
@@ -77,6 +82,30 @@ jobs:
           echo "No tracking file found"
         fi
     
+    - name: Search NCBI PMC and Europe PMC beyond the open-access download
+      env:
+        SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
+      run: |
+        RECHECK_ARG=""
+        if [ "${{ github.event.inputs.recheck_existing }}" = "true" ]; then
+          RECHECK_ARG="--recheck-existing"
+        fi
+
+        synapse-miner search \
+          --synapse-pat "$SYNAPSE_PAT" \
+          --table-id syn66047339 \
+          --output search_results.csv \
+          $RECHECK_ARG
+
+    - name: Classify publications for NF Data Portal studies
+      env:
+        SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
+      run: |
+        synapse-miner classify \
+          --synapse-pat "$SYNAPSE_PAT" \
+          --table-id syn66047339 \
+          --output classified_publications.csv
+
     - name: Upload workflow artifacts
       uses: actions/upload-artifact@v4
       if: always()
@@ -86,4 +115,6 @@ jobs:
           workflow_results.csv
           workflow_results.csv.*.csv
           last_processed_pmc.json
+          search_results.csv
+          classified_publications.csv
         retention-days: 30

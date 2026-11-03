@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from .utils.europepmc_client import EuropePMCClient, normalize_pmcid
+from .utils.ncbi_pmc_client import NCBIPMCClient
 from .utils.reuse_classifier import (
     Mention, classify_mention, classify_pair, extract_mentions,
     has_paper_level_deposit, lead_authors_on_paper,
@@ -63,7 +64,8 @@ def _tracked_entry(meta: Dict, tracked: Dict[str, Dict]) -> Optional[Dict]:
 def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
                           tracked: Dict[str, Dict], resolver: StudyResolver,
                           epmc: EuropePMCClient,
-                          funders: Optional[List[str]] = None) -> pd.DataFrame:
+                          funders: Optional[List[str]] = None,
+                          ncbi: Optional[NCBIPMCClient] = None) -> pd.DataFrame:
     """
     Label each (paper, study) pair found in the mined mentions.
 
@@ -74,6 +76,8 @@ def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
         resolver: StudyResolver for mapping Synapse IDs to studies
         epmc: Europe PMC client for metadata and full text
         funders: Only keep studies funded by one of these agencies
+        ncbi: NCBI PMC client used for full text Europe PMC does not serve
+              (e.g. NIH author manuscripts)
 
     Returns:
         DataFrame with OUTPUT_COLUMNS, one row per (paper, study)
@@ -95,6 +99,13 @@ def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
     pmcids = sorted(df["pmcid"].unique())
     metadata = epmc.get_metadata(pmcids)
     fulltexts = epmc.get_fulltexts(pmcids)
+    missing = [p for p in pmcids if fulltexts.get(p) is None]
+    if ncbi and missing:
+        for pmcid, xml in ncbi.iter_fulltexts(missing):
+            if "<body" in xml:
+                fulltexts[pmcid] = xml
+        logger.info(f"NCBI PMC supplied full text for "
+                    f"{sum(fulltexts.get(p) is not None for p in missing)}/{len(missing)} more articles")
 
     contexts = defaultdict(list)
     for row in df.itertuples():

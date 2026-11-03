@@ -171,7 +171,34 @@ class SynapseUploader:
         except Exception as e:
             logger.error(f"Error uploading results to table {table_id}: {e}")
             return False
-    
+
+    def upload_new_pairs_to_table(self, df: "pd.DataFrame", table_id: str) -> int:
+        """
+        Append rows whose (pmcid, synid) pair is not already in the table.
+
+        Unlike upload_new_results_to_table, an article already in the table can
+        still gain Synapse IDs that earlier mining missed. Errors are raised.
+
+        Args:
+            df: Rows with pmcid, synid and context
+            table_id: Synapse ID of the target table
+
+        Returns:
+            Number of rows uploaded
+        """
+        if df.empty:
+            return 0
+        existing = self.get_all_results(table_id)
+        existing_pairs = set(zip(existing["pmcid"].astype(str), existing["synid"].astype(str)))
+        new = df[[(p, s) not in existing_pairs
+                  for p, s in zip(df["pmcid"].astype(str), df["synid"].astype(str))]]
+        logger.info(f"{len(new)} of {len(df)} rows are new (pmcid, synid) pairs")
+        if new.empty:
+            return 0
+        self.syn.store(Table(table_id, new[["pmcid", "synid", "context"]]))
+        logger.info(f"Uploaded {len(new)} new rows to table {table_id}")
+        return len(new)
+
     def batch_upload_workflow(self, batch_files: List[str], folder_id: str, 
                             table_id: str) -> bool:
         """

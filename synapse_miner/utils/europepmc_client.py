@@ -88,6 +88,25 @@ class EuropePMCClient:
                 delay *= 2
         return None
 
+    def search(self, query: str) -> List[Dict]:
+        """All Europe PMC search results for a query (id, source, pmcid, pmid, doi, title)."""
+        results, cursor = [], "*"
+        while True:
+            response = self._get(f"{EUROPEPMC_REST}/search", params={
+                "query": query, "format": "json", "resultType": "lite",
+                "pageSize": 1000, "cursorMark": cursor,
+            })
+            page = response.json() if response else {}
+            batch = page.get("resultList", {}).get("result", [])
+            results.extend(batch)
+            next_cursor = page.get("nextCursorMark")
+            if not batch or not next_cursor or next_cursor == cursor:
+                break
+            cursor = next_cursor
+        logger.info(f"Europe PMC: {len(results)} articles match {query}")
+        return [{k: r.get(k) for k in ("id", "source", "pmcid", "pmid", "doi", "title", "pubYear")}
+                for r in results]
+
     def get_metadata(self, pmcids: Iterable[str]) -> Dict[str, Dict]:
         """
         Article metadata keyed by PMCID.

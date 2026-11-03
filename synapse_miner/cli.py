@@ -284,6 +284,52 @@ def main() -> None:
             help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
 
+    # Search beyond the Europe PMC open-access download
+    if SYNAPSE_AVAILABLE:
+        search_parser = subparsers.add_parser(
+            "search",
+            help="Find and mine articles mentioning Synapse in NCBI PMC and Europe PMC full text"
+        )
+        search_parser.add_argument(
+            "--table-id",
+            default="syn66047339",
+            help="Synapse results table to add new mentions to (default: syn66047339)"
+        )
+        search_parser.add_argument(
+            "--query",
+            action="append",
+            help="Full-text query; repeat for several (default: Synapse links/DOIs, 'Synapse ID' phrasing and Sage portal names)"
+        )
+        search_parser.add_argument(
+            "--recheck-existing",
+            action="store_true",
+            help="Also re-mine articles already in the table, adding Synapse IDs earlier mining missed"
+        )
+        search_parser.add_argument(
+            "--max-articles",
+            type=int,
+            help="Maximum number of articles to mine (for testing)"
+        )
+        search_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Mine and write the CSV without uploading to Synapse"
+        )
+        search_parser.add_argument(
+            "-o", "--output",
+            default="search_results.csv",
+            help="CSV of mined mentions (default: search_results.csv)"
+        )
+        search_parser.add_argument(
+            "--cache-dir",
+            default=".cache/search",
+            help="Directory caching NCBI full text (default: .cache/search)"
+        )
+        search_parser.add_argument(
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
+        )
+
     args = parser.parse_args()
 
     # Set up logging
@@ -342,6 +388,9 @@ def main() -> None:
 
         elif args.command == "classify" and SYNAPSE_AVAILABLE:
             run_classify_workflow(args, logger)
+
+        elif args.command == "search" and SYNAPSE_AVAILABLE:
+            run_search_workflow(args, logger)
 
         else:
             parser.print_help()
@@ -555,6 +604,7 @@ def run_classify_workflow(args, logger):
     import os
     from synapse_miner.classify import classify_publications
     from synapse_miner.utils.europepmc_client import EuropePMCClient
+    from synapse_miner.utils.ncbi_pmc_client import NCBIPMCClient
     from synapse_miner.utils.study_resolver import (
         StudyResolver, load_studies, load_tracked_publications,
     )
@@ -576,9 +626,53 @@ def run_classify_workflow(args, logger):
 
     resolver = StudyResolver(syn, studies, cache_path=os.path.join(args.cache_dir, "projects.json"))
     epmc = EuropePMCClient(cache_dir=os.path.join(args.cache_dir, "europepmc"))
-    results = classify_publications(mentions, studies, tracked, resolver, epmc, funders=args.funder)
+    ncbi = NCBIPMCClient(cache_dir=os.path.join(args.cache_dir, "ncbi"))
+    results = classify_publications(mentions, studies, tracked, resolver, epmc,
+                                    funders=args.funder, ncbi=ncbi)
     results.to_csv(args.output, index=False)
     logger.info(f"Wrote {len(results)} paper-study rows to {args.output}")
+
+
+def run_search_workflow(args, logger):
+    """Find and mine articles mentioning Synapse beyond the open-access download."""
+    import os
+    from synapse_miner.search import DEFAULT_QUERIES, search_and_mine
+    from synapse_miner.utils.europepmc_client import EuropePMCClient
+    from synapse_miner.utils.ncbi_pmc_client import NCBIPMCClient
+
+    token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+    try:
+        uploader = SynapseUploader(pat=token)
+        existing = uploader.get_all_results(args.table_id)
+    except Exception as e:
+        logger.error(f"Failed to read Synapse table {args.table_id}: {e}")
+        sys.exit(1)
+    existing_pmcids = set(existing["pmcid"].astype(str).str.replace("pmc:", "", regex=False))
+
+    ncbi = NCBIPMCClient(cache_dir=os.path.join(args.cache_dir, "ncbi"))
+    epmc = EuropePMCClient()
+    try:
+        mentions, without_pmcid = search_and_mine(
+            args.query or DEFAULT_QUERIES, existing_pmcids, ncbi, epmc,
+            recheck_existing=args.recheck_existing, max_articles=args.max_articles)
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        sys.exit(1)
+
+    mentions.to_csv(args.output, index=False)
+    logger.info(f"Wrote {len(mentions)} mentions to {args.output}")
+    if without_pmcid:
+        logger.info(f"{len(without_pmcid)} matching records have no PMCID and were not mined, e.g. "
+                    + ", ".join(f"{r['source']}:{r['id']}" for r in without_pmcid[:5]))
+
+    if args.dry_run:
+        logger.info("--dry-run set: not uploading to Synapse")
+        return
+    try:
+        uploader.upload_new_pairs_to_table(mentions, args.table_id)
+    except Exception as e:
+        logger.error(f"Failed to upload to Synapse table {args.table_id}: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
