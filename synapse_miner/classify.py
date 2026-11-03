@@ -24,7 +24,8 @@ from .utils.study_resolver import StudyResolver
 logger = logging.getLogger(__name__)
 
 OUTPUT_COLUMNS = [
-    "pmcid", "pmid", "doi", "title", "journal", "year", "study_id", "study_name",
+    "pmcid", "pmid", "doi", "title", "journal", "year", "authors", "is_preprint",
+    "study_id", "study_name",
     "funding_agency", "relationship", "confidence", "reason", "lead_authors_on_paper",
     "synids", "evidence", "has_fulltext", "in_publications_table",
     "linked_to_study_in_publications_table",
@@ -47,6 +48,17 @@ def _format_evidence(mentions: List[Mention], limit: int = 3, width: int = 400) 
         if len(lines) == limit:
             break
     return "\n".join(lines)
+
+
+def _author_names(meta: Dict) -> str:
+    """'First Last' names joined by '; ', as in the portal publications table."""
+    names = []
+    for author in meta.get("authors", []):
+        first, last = author.get("firstName"), author.get("lastName")
+        name = f"{first} {last}" if first and last else author.get("fullName")
+        if name:
+            names.append(name)
+    return "; ".join(names)
 
 
 def _tracked_entry(meta: Dict, tracked: Dict[str, Dict]) -> Optional[Dict]:
@@ -146,6 +158,8 @@ def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
                 "title": meta.get("title"),
                 "journal": meta.get("journal"),
                 "year": meta.get("year"),
+                "authors": _author_names(meta),
+                "is_preprint": any(str(t).lower() == "preprint" for t in meta.get("pub_types", [])),
                 "study_id": study_id,
                 "study_name": study["study_name"],
                 "funding_agency": ", ".join(study["funding_agency"]),

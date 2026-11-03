@@ -125,6 +125,20 @@ synapse-miner classify \
 
 Each output row is one (paper, study) pair with the label, a confidence (`high`/`medium`/`low`), the reason, the supporting sentences (`evidence`), study leads found among the authors, and whether the paper is already in the portal publications table ([syn16857542](https://www.synapse.org/Synapse/syn16857542)) and linked to that study. Europe PMC responses and Synapse lookups are cached in `--cache-dir` (default `.cache/classify`), so reruns only fetch new papers.
 
+#### Cited By table
+
+`classify` also writes `cited_by.csv`: the `secondary`, `review` and `mention` pairs in the same format as the portal publications table ([syn16857542](https://www.synapse.org/Synapse/syn16857542)), so a study page can show a "Cited By" section with the same publication cards, filtered on `studyId`. There is one row per (paper, study), and `publicationType` holds the relationship. A paper that is primary for one study and secondary for another appears only under the study it reused. `primary` papers belong in the publications table, and `unclear` pairs are left out until reviewed. Extra columns after the publications-table ones: `pmcid`, `isPreprint`, `confidence`, `citedSynapseIds`, `evidence`.
+
+```bash
+# One-time: create the table in a project, then fill it
+synapse-miner classify --create-cited-by-table-in <PROJECT_ID>
+
+# Later runs: replace the table's rows
+synapse-miner classify --cited-by-table <TABLE_ID>
+```
+
+The table is generated, so each run replaces all its rows, and hand edits are overwritten.
+
 ## Output
 
 | File | Description |

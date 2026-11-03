@@ -104,7 +104,8 @@ jobs:
         synapse-miner classify \
           --synapse-pat "$SYNAPSE_PAT" \
           --table-id syn66047339 \
-          --output classified_publications.csv
+          --output classified_publications.csv \
+          --cited-by-output cited_by.csv
 
     - name: Upload workflow artifacts
       uses: actions/upload-artifact@v4
@@ -117,4 +118,5 @@ jobs:
           last_processed_pmc.json
           search_results.csv
           classified_publications.csv
+          cited_by.csv
         retention-days: 30

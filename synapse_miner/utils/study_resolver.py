@@ -38,9 +38,10 @@ def _as_list(value) -> List[str]:
 
 
 def load_studies(syn, view_id: str = STUDIES_VIEW) -> Dict[str, Dict]:
-    """Portal studies keyed by project ID, with name, leads, funders and institutions."""
+    """Portal studies keyed by project ID, with name, leads, funders, institutions and disease."""
     df = syn.tableQuery(
-        f"SELECT id, studyName, studyLeads, fundingAgency, institutions, initiative FROM {view_id}"
+        f"SELECT id, studyName, studyLeads, fundingAgency, institutions, initiative, "
+        f"diseaseFocus, manifestation FROM {view_id}"
     ).asDataFrame()
     studies = {}
     for _, row in df.iterrows():
@@ -51,6 +52,8 @@ def load_studies(syn, view_id: str = STUDIES_VIEW) -> Dict[str, Dict]:
             "funding_agency": _as_list(row["fundingAgency"]),
             "institutions": _as_list(row["institutions"]),
             "initiative": None if pd.isna(row["initiative"]) else row["initiative"],
+            "disease_focus": _as_list(row["diseaseFocus"]),
+            "manifestation": _as_list(row["manifestation"]),
         }
     logger.info(f"Loaded {len(studies)} studies from {view_id}")
     return studies
