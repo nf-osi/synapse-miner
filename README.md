@@ -125,19 +125,36 @@ synapse-miner classify \
 
 Each output row is one (paper, study) pair with the label, a confidence (`high`/`medium`/`low`), the reason, the supporting sentences (`evidence`), study leads found among the authors, and whether the paper is already in the portal publications table ([syn16857542](https://www.synapse.org/Synapse/syn16857542)) and linked to that study. Europe PMC responses and Synapse lookups are cached in `--cache-dir` (default `.cache/classify`), so reruns only fetch new papers.
 
-#### Cited By table
+#### Adding papers to the portal tables
 
-`classify` also writes `cited_by.csv`: the `secondary`, `review` and `mention` pairs in the same format as the portal publications table ([syn16857542](https://www.synapse.org/Synapse/syn16857542)), so a study page can show a "Cited By" section with the same publication cards, filtered on `studyId`. There is one row per (paper, study), and `publicationType` holds the relationship. A paper that is primary for one study and secondary for another appears only under the study it reused. `primary` papers belong in the publications table, and `unclear` pairs are left out until reviewed. Extra columns after the publications-table ones: `pmcid`, `isPreprint`, `confidence`, `citedSynapseIds`, `evidence`.
+`classify` turns labelled pairs into rows in the portal publications table's format, one row per (paper, study):
+
+| Relationship | Table | Rows added |
+|--------------|-------|------------|
+| `primary` | Publications ([syn16857542](https://www.synapse.org/Synapse/syn16857542)) | `high` and `medium` confidence |
+| `secondary`, `review`, `mention` | Cited By ([syn78484103](https://www.synapse.org/Synapse/syn78484103)) | all; `publicationType` holds the relationship |
+| `unclear` | neither | left for a human look (in `classified_publications.csv`) |
+
+A paper that is primary for one study and secondary for another gets a row in each table, each under its own study. Both tables share the publications table's columns, so study pages show them with the same publication cards filtered on `studyId`; Cited By adds `pmcid`, `isPreprint`, `confidence`, `citedSynapseIds` and `evidence` at the end.
+
+Rows are only ever **appended**: a (paper, study) pair already in either table (matched by PMID or DOI) is skipped, so curated rows and hand edits are never changed and nothing is deleted.
 
 ```bash
-# One-time: create the table in a project, then fill it
+# One-time: create the Cited By table in a project
 synapse-miner classify --create-cited-by-table-in <PROJECT_ID>
 
-# Later runs: replace the table's rows
-synapse-miner classify --cited-by-table <TABLE_ID>
+# Append new pairs to both tables and write a review issue body if anything was added
+synapse-miner classify \
+  --cited-by-table syn78484103 \
+  --add-primary-publications \
+  --review-issue-output review_issue.md
 ```
 
-The table is generated, so each run replaces all its rows, and hand edits are overwritten.
+Without `--cited-by-table` or `--add-primary-publications`, `classify` only writes CSVs (`classified_publications.csv`, `primary_publications.csv`, `cited_by.csv`).
+
+#### Synapse safety
+
+Every automated write to a Synapse table (the mentions table, the publications table and Cited By) is bracketed by snapshot versions, as in nf-research-tools-schema's Synapse safety rules. Snapshot comments carry the date, what was written and the workflow run link, e.g. `2026-11-10 before: classify adds 3 Cited By rows https://github.com/nf-osi/synapse-miner/actions/runs/123`. A write does not go ahead if its "before" snapshot fails. To undo a run, query the table at the "before" version (`SELECT * FROM syn78484103.<version>`). Nothing in this package deletes table rows.
 
 ## Output
 
@@ -174,7 +191,8 @@ Runs every **Monday at 22:00 UTC**.
 - Uploads batch CSVs to the Synapse folder and new rows to the results table
 - Commits the updated tracking file back to the repository
 - Runs `search` for articles outside the Open Access download, adding new rows to the results table
-- Runs `classify`, replaces the rows of the Cited By table ([syn78484103](https://www.synapse.org/Synapse/syn78484103)), and attaches `classified_publications.csv` and `cited_by.csv` to the run's artifacts
+- Runs `classify`, appends new primary pairs to the publications table and new secondary/review/mention pairs to Cited By, and attaches the CSVs to the run's artifacts
+- When rows were added, opens a `publication-review` issue listing them, lowest confidence first (no issue when nothing was added)
 
 Can be triggered manually from the Actions tab with an optional `max_files` parameter for testing, and `recheck_existing` to re-mine articles already in the table (a one-off backfill of IDs older parser versions missed).
 

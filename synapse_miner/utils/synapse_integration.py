@@ -7,6 +7,8 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Set
 
+from .synapse_safety import snapshots_around
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -195,7 +197,8 @@ class SynapseUploader:
         logger.info(f"{len(new)} of {len(df)} rows are new (pmcid, synid) pairs")
         if new.empty:
             return 0
-        self.syn.store(Table(table_id, new[["pmcid", "synid", "context"]]))
+        with snapshots_around(self.syn, table_id, f"search adds {len(new)} mention rows"):
+            self.syn.store(Table(table_id, new[["pmcid", "synid", "context"]]))
         logger.info(f"Uploaded {len(new)} new rows to table {table_id}")
         return len(new)
 
@@ -214,23 +217,26 @@ class SynapseUploader:
         """
         try:
             success_count = 0
-            
-            for batch_file in batch_files:
-                logger.info(f"Processing batch file: {batch_file}")
+
+            # One before/after snapshot pair brackets every table write in this run
+            with snapshots_around(self.syn, table_id,
+                                  f"weekly mining uploads {len(batch_files)} batch files"):
+                for batch_file in batch_files:
+                    logger.info(f"Processing batch file: {batch_file}")
                 
-                # Upload individual batch file to folder
-                file_id = self.upload_batch_file(batch_file, folder_id)
-                if not file_id:
-                    logger.error(f"Failed to upload batch file: {batch_file}")
-                    continue
+                    # Upload individual batch file to folder
+                    file_id = self.upload_batch_file(batch_file, folder_id)
+                    if not file_id:
+                        logger.error(f"Failed to upload batch file: {batch_file}")
+                        continue
                 
-                # Upload new results to table
-                if not self.upload_new_results_to_table(batch_file, table_id):
-                    logger.error(f"Failed to upload results to table from: {batch_file}")
-                    continue
+                    # Upload new results to table
+                    if not self.upload_new_results_to_table(batch_file, table_id):
+                        logger.error(f"Failed to upload results to table from: {batch_file}")
+                        continue
                     
-                success_count += 1
-                logger.info(f"Successfully processed batch file: {batch_file}")
+                    success_count += 1
+                    logger.info(f"Successfully processed batch file: {batch_file}")
             
             logger.info(f"Completed batch upload: {success_count}/{len(batch_files)} successful")
             return success_count == len(batch_files)

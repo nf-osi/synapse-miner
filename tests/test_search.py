@@ -68,6 +68,11 @@ def test_mine_articles():
 class FakeSyn:
     def __init__(self):
         self.stored = None
+        self.snapshots = []
+
+    def create_snapshot_version(self, table_id, comment=None):
+        self.snapshots.append(comment)
+        return len(self.snapshots)
 
     def store(self, table):
         self.stored = table
@@ -89,3 +94,5 @@ def test_upload_new_pairs_adds_ids_to_existing_articles(monkeypatch):
     })
     assert uploader.upload_new_pairs_to_table(mined, "syn66047339") == 1
     assert list(captured["df"]["synid"]) == ["syn4939902"]
+    # The table is snapshotted before and after the write
+    assert [c.split(": ")[0][-6:].strip() for c in uploader.syn.snapshots] == ["before", "after"]

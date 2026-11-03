@@ -282,17 +282,32 @@ def main() -> None:
         classify_parser.add_argument(
             "--cited-by-output",
             default="cited_by.csv",
-            help="CSV of Cited By rows (secondary, review, mention) in the publications table format "
+            help="CSV of all Cited By rows (secondary, review, mention) in the publications table format "
                  "(default: cited_by.csv)"
         )
         classify_parser.add_argument(
+            "--primary-output",
+            default="primary_publications.csv",
+            help="CSV of all primary rows (high/medium confidence) in the publications table format "
+                 "(default: primary_publications.csv)"
+        )
+        classify_parser.add_argument(
             "--cited-by-table",
-            help="Synapse Cited By table to replace with the new rows (omit to only write the CSV)"
+            help="Synapse Cited By table to append new (paper, study) pairs to (omit to only write CSVs)"
+        )
+        classify_parser.add_argument(
+            "--add-primary-publications",
+            action="store_true",
+            help="Append new primary (paper, study) pairs to --publications-table"
         )
         classify_parser.add_argument(
             "--create-cited-by-table-in",
             metavar="PROJECT_ID",
             help="Create a new Cited By table in this Synapse project, then fill it"
+        )
+        classify_parser.add_argument(
+            "--review-issue-output",
+            help="When rows were appended, write a review issue body here (and its title to <path>.title)"
         )
         classify_parser.add_argument(
             "--synapse-pat",
@@ -617,7 +632,10 @@ def run_ebisearch_workflow(args, logger):
 def run_classify_workflow(args, logger):
     """Classify mined papers by how they relate to NF Data Portal studies."""
     import os
-    from synapse_miner.cited_by import build_cited_by, create_cited_by_table, replace_cited_by_rows
+    from synapse_miner.portal_tables import (
+        CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, build_cited_by, build_primary,
+        create_cited_by_table, drop_existing_pairs, load_pair_keys, review_issue,
+    )
     from synapse_miner.classify import classify_publications
     from synapse_miner.utils.europepmc_client import EuropePMCClient
     from synapse_miner.utils.ncbi_pmc_client import NCBIPMCClient
@@ -648,18 +666,50 @@ def run_classify_workflow(args, logger):
     results.to_csv(args.output, index=False)
     logger.info(f"Wrote {len(results)} paper-study rows to {args.output}")
 
+    primary = build_primary(results, studies)
     cited_by = build_cited_by(results, studies)
+    primary.to_csv(args.primary_output, index=False)
     cited_by.to_csv(args.cited_by_output, index=False)
-    logger.info(f"Wrote {len(cited_by)} Cited By rows to {args.cited_by_output}")
+    logger.info(f"Wrote {len(primary)} primary rows to {args.primary_output} "
+                f"and {len(cited_by)} Cited By rows to {args.cited_by_output}")
 
-    table_id = args.cited_by_table
+    cited_by_table = args.cited_by_table
+    if not (cited_by_table or args.create_cited_by_table_in or args.add_primary_publications):
+        return
+    additions, failed = {}, False
     try:
         if args.create_cited_by_table_in:
-            table_id = create_cited_by_table(syn, args.create_cited_by_table_in)
-        if table_id:
-            replace_cited_by_rows(syn, table_id, cited_by)
+            cited_by_table = create_cited_by_table(syn, args.create_cited_by_table_in)
+        # A pair already in either table is never added again, to either table
+        existing = load_pair_keys(syn, args.publications_table)
+        if cited_by_table:
+            existing |= load_pair_keys(syn, cited_by_table)
+        if args.add_primary_publications:
+            new_primary = drop_existing_pairs(primary, existing)
+            append_rows(syn, args.publications_table, new_primary, PUBLICATION_COLUMNS,
+                        f"classify adds {len(new_primary)} primary publication rows")
+            additions[args.publications_table] = new_primary
+        if cited_by_table:
+            new_cited_by = drop_existing_pairs(cited_by, existing)
+            append_rows(syn, cited_by_table, new_cited_by, CITED_BY_COLUMNS,
+                        f"classify adds {len(new_cited_by)} Cited By rows")
+            additions[cited_by_table] = new_cited_by
     except Exception as e:
-        logger.error(f"Failed to update Cited By table {table_id or ''}: {e}")
+        logger.error(f"Failed to update the portal publication tables: {e}")
+        failed = True
+
+    # Rows appended before a failure still get a review issue
+    issue = review_issue(additions)
+    if issue and args.review_issue_output:
+        title, body = issue
+        with open(args.review_issue_output, "w") as f:
+            f.write(body)
+        with open(f"{args.review_issue_output}.title", "w") as f:
+            f.write(title)
+        logger.info(f"Wrote review issue to {args.review_issue_output}")
+    elif not issue:
+        logger.info("No rows were added; no review issue needed")
+    if failed:
         sys.exit(1)
 
 
