@@ -127,8 +127,8 @@ def main() -> None:
         )
         workflow_parser.add_argument(
             "-u", "--url",
-            default="https://europepmc.org/ftp/oa/",
-            help="Base URL of the Europe PMC server (default: https://europepmc.org/ftp/oa/)"
+            default="https://ftp.ebi.ac.uk/pub/databases/pmc/oa/",
+            help="Base URL of the Europe PMC server (default: https://ftp.ebi.ac.uk/pub/databases/pmc/oa/)"
         )
         workflow_parser.add_argument(
             "-o", "--output",

@@ -75,7 +75,7 @@ The workflow uses `last_processed_pmc.json` to track progress:
 
 ### File Processing
 
-1. **Download**: XML files from `https://europepmc.org/ftp/oa/`
+1. **Download**: XML files from `https://ftp.ebi.ac.uk/pub/databases/pmc/oa/`
 2. **Processing**: Extract Synapse IDs with context from each article
 3. **Batch Files**: Individual CSV files for each XML file processed
 4. **Main Results**: Aggregated CSV with all findings
