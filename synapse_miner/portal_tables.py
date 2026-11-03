@@ -22,6 +22,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
 
+from .utils.europepmc_client import author_names
 from .utils.synapse_safety import run_url, snapshots_around
 
 logger = logging.getLogger(__name__)
@@ -229,21 +230,123 @@ _CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
 _MAX_ISSUE_BODY = 60000
 
 
-def review_issue(additions: Dict[str, pd.DataFrame]) -> Optional[Tuple[str, str]]:
+def not_added(classified: pd.DataFrame, existing: Set[Tuple[str, str]]) -> pd.DataFrame:
     """
-    Title and Markdown body for an issue listing this run's additions,
-    lowest confidence first, or None when nothing was added.
+    Pairs left out of both tables for low confidence: unclear pairs and
+    low-confidence primary pairs not already in either table.
+    """
+    low = classified[(classified["relationship"] == "unclear") |
+                     ((classified["relationship"] == "primary") & (classified["confidence"] == "low"))]
+    if low.empty:
+        return low
+    keep = []
+    for row in low.itertuples(index=False):
+        ids = [f"pmid:{p}" for p in [_pmid_digits(row.pmid)] if p] + \
+              [f"doi:{d}" for d in [_doi_key(row.doi)] if d]
+        keep.append(not any((paper, row.study_id) in existing for paper in ids))
+    return low[keep]
+
+
+def update_preprint_rows(syn, table_id: str, epmc, cited_by: bool = False) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Point rows for preprints at their published versions, in place.
+
+    PubMed links a preprint to its published version ("Update in"). For each
+    row whose PMID is such a preprint, the paper columns (pmid, doi, title,
+    journal, year, author; plus pmcid and isPreprint in Cited By) are
+    replaced with the published version's; study columns are left alone.
+    If the table already has the published version for the same study, the
+    preprint row would become a duplicate, so it is reported for removal by
+    hand instead (this package never deletes rows).
+
+    Returns:
+        (rows updated, rows to remove by hand), each a list of dicts with
+        table, row_id, preprint_pmid, published_pmid, title and studies
+    """
+    from synapseclient import PartialRowset
+    current = syn.tableQuery(f"SELECT pmid, title, studyId FROM {table_id}") \
+                 .asDataFrame(rowIdAndVersionInIndex=False)
+    current["pmid_digits"] = current["pmid"].map(_pmid_digits)
+    meta = epmc.get_metadata_by_pmid([p for p in current["pmid_digits"] if p])
+    published_of = {p: m["updated_in"][0] for p, m in meta.items() if m.get("updated_in")}
+    if not published_of:
+        return [], []
+    published = epmc.get_metadata_by_pmid(set(published_of.values()))
+    have = {(p, s) for p, studies in zip(current["pmid_digits"], current["studyId"]) for s in _as_list(studies)}
+
+    changes, updated, manual = {}, [], []
+    for row in current.itertuples(index=False):
+        published_pmid = published_of.get(row.pmid_digits)
+        if not published_pmid:
+            continue
+        studies = _as_list(row.studyId)
+        record = {"table": table_id, "row_id": int(row.ROW_ID), "preprint_pmid": row.pmid_digits,
+                  "published_pmid": published_pmid, "title": _plain_title(row.title), "studies": studies}
+        if any((published_pmid, s) in have for s in studies):
+            manual.append(record)
+            continue
+        m = published.get(published_pmid)
+        if not m:
+            logger.warning(f"No metadata for PMID {published_pmid}, the published version of {row.pmid}")
+            continue
+        values = {
+            "pmid": f"PMID:{published_pmid}",
+            "doi": m.get("doi"),
+            "title": _plain_title(m.get("title")),
+            "journal": _fit("journal", m.get("journal")),
+            "year": int(m["year"]) if m.get("year") else None,
+            "author": _fit_list("author", author_names(m)),
+        }
+        if cited_by:
+            values.update({"pmcid": _fit("pmcid", m.get("pmcid")), "isPreprint": False})
+        changes[int(row.ROW_ID)] = values
+        updated.append({**record, "title": values["title"]})
+
+    if changes:
+        ids = ",".join(str(i) for i in changes)
+        columns = ", ".join(f'"{c}"' for c in next(iter(changes.values())))
+        with snapshots_around(syn, table_id, f"classify replaces {len(changes)} preprints with published versions"):
+            # Query after the "before" snapshot so the row etags are current
+            fresh = syn.tableQuery(f"SELECT {columns} FROM {table_id} WHERE ROW_ID IN ({ids})")
+            syn.store(PartialRowset.from_mapping(changes, fresh))
+        logger.info(f"Replaced {len(changes)} preprint rows in {table_id} with their published versions")
+    if manual:
+        logger.warning(f"{len(manual)} preprint rows in {table_id} duplicate their published version; "
+                       "remove them by hand")
+    return updated, manual
+
+
+def _paper_link(pmid: str, title: str) -> str:
+    title = (title or "")[:90].replace("|", "/")
+    return f"[{title}](https://pubmed.ncbi.nlm.nih.gov/{pmid}/) PMID:{pmid}"
+
+
+def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dict]] = None,
+                 to_remove: Optional[List[Dict]] = None,
+                 left_out: Optional[pd.DataFrame] = None) -> Optional[Tuple[str, str]]:
+    """
+    Title and Markdown body for an issue listing this run's changes, or None
+    when the run changed nothing.
 
     Args:
-        additions: table ID -> rows appended to it in this run
+        additions: table ID -> rows appended to it in this run (lowest confidence listed first)
+        replaced: preprint rows updated to their published versions
+        to_remove: preprint rows that duplicate their published version
+        left_out: low-confidence pairs not added to either table (listed, but
+            on their own never trigger an issue)
     """
+    replaced, to_remove = replaced or [], to_remove or []
+    left_out = left_out if left_out is not None else pd.DataFrame()
     total = sum(len(df) for df in additions.values())
-    if not total:
+    if not (total or replaced or to_remove):
         return None
     url = run_url()
+    summary = [f"{total} rows added"] + ([f"{len(replaced)} preprints replaced by their published versions"]
+                                         if replaced else []) \
+              + ([f"{len(to_remove)} preprint rows to remove by hand"] if to_remove else [])
     lines = [
-        f"This run added {total} paper-study rows to the NF Data Portal publication tables. "
-        "Please check them, especially the lower-confidence rows at the top of each table, "
+        f"This run changed the NF Data Portal publication tables: {', '.join(summary)}. "
+        "Please check the additions, especially the lower-confidence rows at the top of each table, "
         "and fix or remove any that are wrong.",
         "",
         "- **primary** rows go to the publications table: the paper generated or deposited the study's data.",
@@ -252,14 +355,13 @@ def review_issue(additions: Dict[str, pd.DataFrame]) -> Optional[Tuple[str, str]
         "",
     ]
     if url:
-        lines += [f"Workflow run: {url} (its `classified_publications.csv` artifact has every pair, "
-                  "including unclear ones that were not added)", ""]
+        lines += [f"Workflow run: {url} (its `classified_publications.csv` artifact has every pair)", ""]
     for table_id, df in additions.items():
         if df.empty:
             continue
         ordered = df.assign(_order=df["confidence"].map(_CONFIDENCE_ORDER).fillna(-1)) \
                     .sort_values(["_order", "year"], ascending=[True, False])
-        lines += [f"### [{table_id}](https://www.synapse.org/Synapse:{table_id}/tables/) ({len(df)} rows)", "",
+        lines += [f"### Added to [{table_id}](https://www.synapse.org/Synapse:{table_id}/tables/) ({len(df)} rows)", "",
                   "| Confidence | Relationship | Paper | Study | Evidence |", "|---|---|---|---|---|"]
         for row in ordered.itertuples(index=False):
             paper_id = row.pmid or (f"doi:{row.doi}" if row.doi else row.pmcid)
@@ -270,7 +372,32 @@ def review_issue(additions: Dict[str, pd.DataFrame]) -> Optional[Tuple[str, str]
             lines.append(f"| {row.confidence} | {row.publicationType} | [{title}]({link}) {paper_id}{preprint} "
                          f"| {row.studyId[0]} {row.studyName[0][:60] if row.studyName else ''} | {evidence} |")
         lines.append("")
-    title = f"Review {total} new publication rows ({pd.Timestamp.today().date().isoformat()})"
+    if replaced:
+        lines += [f"### Preprints replaced by their published versions ({len(replaced)})", "",
+                  "| Table | Preprint | Published version | Studies |", "|---|---|---|---|"]
+        lines += [f"| {r['table']} | PMID:{r['preprint_pmid']} | {_paper_link(r['published_pmid'], r['title'])} "
+                  f"| {', '.join(r['studies'])} |" for r in replaced]
+        lines.append("")
+    if to_remove:
+        lines += [f"### Preprint rows to remove by hand ({len(to_remove)})", "",
+                  "These preprints' published versions are already in the same table for the same study, "
+                  "so the preprint row is a duplicate. Automation never deletes rows.", "",
+                  "| Table | ROW_ID | Preprint | Published version | Studies |", "|---|---|---|---|---|"]
+        lines += [f"| {r['table']} | {r['row_id']} | {_paper_link(r['preprint_pmid'], r['title'])} "
+                  f"| PMID:{r['published_pmid']} | {', '.join(r['studies'])} |" for r in to_remove]
+        lines.append("")
+    if not left_out.empty:
+        lines += [f"### Not added: {len(left_out)} low-confidence pairs", "",
+                  "These were left out of both tables. Add any that belong by hand.", "",
+                  "<details><summary>Show them</summary>", "",
+                  "| Relationship | Paper | Study | Reason |", "|---|---|---|---|"]
+        for row in left_out.itertuples(index=False):
+            pmid = _pmid_digits(row.pmid)
+            paper = _paper_link(pmid, _plain_title(row.title)) if pmid else f"{row.pmcid} {_plain_title(row.title) or ''}"[:120]
+            lines.append(f"| {row.relationship} ({row.confidence}) | {paper} | {row.study_id} "
+                         f"| {str(row.reason).replace('|', '/')} |")
+        lines += ["", "</details>", ""]
+    title = f"Review publication table changes ({pd.Timestamp.today().date().isoformat()})"
     body = "\n".join(lines)
     if len(body) > _MAX_ISSUE_BODY:
         cut = body.rfind("\n", 0, _MAX_ISSUE_BODY - 200)

@@ -112,11 +112,14 @@ class EuropePMCClient:
         Article metadata keyed by PMCID.
 
         Each value has pmcid, pmid, doi, title, journal, year, pub_date,
-        pub_types, is_open_access and authors (Europe PMC author dicts).
+        pub_types, is_open_access, authors (Europe PMC author dicts) and
+        updated_in (PMIDs of the published versions of a preprint).
         PMCIDs Europe PMC does not know are omitted.
         """
         wanted = [normalize_pmcid(p) for p in pmcids]
-        missing = [p for p in dict.fromkeys(wanted) if p not in self._metadata]
+        # Entries cached before updated_in was recorded are fetched again
+        missing = [p for p in dict.fromkeys(wanted)
+                   if p not in self._metadata or "updated_in" not in self._metadata[p]]
         for i in range(0, len(missing), _METADATA_BATCH_SIZE):
             chunk = missing[i:i + _METADATA_BATCH_SIZE]
             query = " OR ".join(f"PMCID:{p}" for p in chunk)
@@ -133,7 +136,7 @@ class EuropePMCClient:
             # the published version) comes back under the other PMCID, so look
             # those up one at a time and store them under the requested ID
             for pmcid in chunk:
-                if pmcid in self._metadata:
+                if pmcid in self._metadata and "updated_in" in self._metadata[pmcid]:
                     continue
                 single = self._get(f"{EUROPEPMC_REST}/search", params={
                     "query": f"PMCID:{pmcid}", "format": "json", "resultType": "core"})
@@ -143,6 +146,27 @@ class EuropePMCClient:
             logger.info(f"Fetched metadata for {min(i + _METADATA_BATCH_SIZE, len(missing))}/{len(missing)} articles")
             self._save_metadata()
         return {p: self._metadata[p] for p in wanted if p in self._metadata}
+
+    def get_metadata_by_pmid(self, pmids: Iterable[str]) -> Dict[str, Dict]:
+        """
+        Article metadata keyed by PMID, for papers that may have no PMCID
+        (e.g. the published version of a preprint in a paywalled journal).
+        """
+        wanted = [str(p).split(".")[0] for p in pmids if str(p).strip()]
+        by_pmid = self._metadata.setdefault("_by_pmid", {})
+        missing = [p for p in dict.fromkeys(wanted) if p not in by_pmid]
+        for i in range(0, len(missing), _METADATA_BATCH_SIZE):
+            chunk = missing[i:i + _METADATA_BATCH_SIZE]
+            query = " OR ".join(f"EXT_ID:{p}" for p in chunk)
+            response = self._get(f"{EUROPEPMC_REST}/search", params={
+                "query": f"({query}) AND SRC:MED", "format": "json", "resultType": "core",
+                "pageSize": 1000,
+            })
+            for article in (response.json().get("resultList", {}).get("result", []) if response else []):
+                if article.get("pmid"):
+                    by_pmid[article["pmid"]] = _summarize(article)
+            self._save_metadata()
+        return {p: by_pmid[p] for p in wanted if p in by_pmid}
 
     def get_fulltext(self, pmcid: str) -> Optional[str]:
         """JATS full-text XML, or None when Europe PMC has no full text."""
@@ -179,6 +203,17 @@ class EuropePMCClient:
         return dict(zip(ids, texts))
 
 
+def author_names(meta: Dict) -> List[str]:
+    """'First Last' author names, as in the portal publications table."""
+    names = []
+    for author in meta.get("authors", []):
+        first, last = author.get("firstName"), author.get("lastName")
+        name = f"{first} {last}" if first and last else author.get("fullName")
+        if name:
+            names.append(name)
+    return names
+
+
 def _summarize(article: Dict) -> Dict:
     """Keep the Europe PMC fields the classifier needs."""
     authors = article.get("authorList", {}).get("author", [])
@@ -193,6 +228,10 @@ def _summarize(article: Dict) -> Dict:
         "pub_date": article.get("firstPublicationDate"),
         "pub_types": article.get("pubTypeList", {}).get("pubType", []),
         "is_open_access": article.get("isOpenAccess") == "Y",
+        # PubMed links a preprint to its published version ("Update in")
+        "updated_in": [c.get("id") for c in
+                       (article.get("commentCorrectionList") or {}).get("commentCorrection", [])
+                       if c.get("type") == "Update in" and c.get("source") == "MED" and c.get("id")],
         "authors": [
             {
                 "fullName": a.get("fullName"),

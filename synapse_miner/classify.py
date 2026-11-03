@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from .utils.europepmc_client import EuropePMCClient, normalize_pmcid
+from .utils.europepmc_client import EuropePMCClient, author_names, normalize_pmcid
 from .utils.ncbi_pmc_client import NCBIPMCClient
 from .utils.reuse_classifier import (
     Mention, classify_mention, classify_pair, extract_mentions,
@@ -28,7 +28,7 @@ OUTPUT_COLUMNS = [
     "study_id", "study_name",
     "funding_agency", "relationship", "confidence", "reason", "lead_authors_on_paper",
     "synids", "evidence", "has_fulltext", "in_publications_table",
-    "linked_to_study_in_publications_table",
+    "linked_to_study_in_publications_table", "replaces_preprint",
 ]
 
 _KIND_ORDER = {"deposit": 0, "reuse": 1, "available": 2, "cite": 3}
@@ -52,13 +52,7 @@ def _format_evidence(mentions: List[Mention], limit: int = 3, width: int = 400) 
 
 def _author_names(meta: Dict) -> str:
     """'First Last' names joined by '; ', as in the portal publications table."""
-    names = []
-    for author in meta.get("authors", []):
-        first, last = author.get("firstName"), author.get("lastName")
-        name = f"{first} {last}" if first and last else author.get("fullName")
-        if name:
-            names.append(name)
-    return "; ".join(names)
+    return "; ".join(author_names(meta))
 
 
 def _tracked_entry(meta: Dict, tracked: Dict[str, Dict]) -> Optional[Dict]:
@@ -71,6 +65,48 @@ def _tracked_entry(meta: Dict, tracked: Dict[str, Dict]) -> Optional[Dict]:
         if key in tracked:
             return tracked[key]
     return None
+
+
+def use_published_versions(out: pd.DataFrame, metadata: Dict[str, Dict],
+                           epmc: EuropePMCClient) -> pd.DataFrame:
+    """
+    Replace preprints with their published versions.
+
+    PubMed links a preprint to its published version ("Update in"). A
+    preprint row takes the published paper's PMID, DOI, title, journal, year
+    and authors, keeping the label read from the preprint's text, and records
+    the preprint's PMID in replaces_preprint. When the published version is
+    already classified for the same study, the preprint row is dropped.
+    """
+    out = out.copy()
+    updates = {}
+    for idx, row in out[out["is_preprint"]].iterrows():
+        published = metadata.get(row["pmcid"], {}).get("updated_in") or []
+        if published:
+            updates[idx] = published[0]
+    if not updates:
+        return out
+    published_meta = epmc.get_metadata_by_pmid(set(updates.values()))
+    classified_pairs = {(str(p), s) for p, s in zip(out["pmid"], out["study_id"])}
+    drop = []
+    for idx, pmid in updates.items():
+        row = out.loc[idx]
+        if (pmid, row["study_id"]) in classified_pairs:
+            drop.append(idx)
+            continue
+        meta = published_meta.get(pmid)
+        if not meta:
+            logger.warning(f"No metadata for PMID {pmid}, the published version of {row['pmcid']}")
+            continue
+        out.at[idx, "replaces_preprint"] = row["pmid"]
+        for column, value in (("pmid", meta.get("pmid")), ("doi", meta.get("doi")),
+                              ("title", meta.get("title")), ("journal", meta.get("journal")),
+                              ("year", meta.get("year")), ("authors", _author_names(meta)),
+                              ("pmcid", meta.get("pmcid")), ("is_preprint", False)):
+            out.at[idx, column] = value
+    logger.info(f"Replaced {len(updates) - len(drop)} preprint rows with their published versions; "
+                f"dropped {len(drop)} whose published version was already classified")
+    return out.drop(index=drop).reset_index(drop=True)
 
 
 def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
@@ -175,7 +211,7 @@ def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
                     bool(tracked_entry and study_id in tracked_entry["study_ids"]),
             })
 
-    out = pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
+    out = use_published_versions(pd.DataFrame(rows, columns=OUTPUT_COLUMNS), metadata, epmc)
     counts = out["relationship"].value_counts().to_dict()
     logger.info(f"Classified {len(out)} paper-study pairs: {counts}")
     return out

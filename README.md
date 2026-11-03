@@ -150,6 +150,10 @@ synapse-miner classify \
   --review-issue-output review_issue.md
 ```
 
+**Preprints and published versions:** PubMed links a preprint to its published version ("Update in"). When a classified preprint has one, the row uses the published paper's PMID, DOI, title, journal, year and authors, keeping the label read from the preprint; if the published version is already classified for the same study, the preprint row is dropped. Rows already in either table whose PMID is a preprint with a published version are updated in place to the published version (study columns untouched, snapshotted before and after). If the table already has the published version for the same study, the preprint row is listed in the review issue for removal by hand, since automation never deletes rows.
+
+**Review issue:** with `--review-issue-output`, a run that adds or updates rows writes an issue listing the additions (lowest confidence first), the preprints it replaced, preprint rows to remove by hand, and, in a collapsible list, how many low-confidence pairs (`unclear`, and `primary` at `low` confidence) were left out of both tables. A run that changes nothing writes no issue.
+
 Without `--cited-by-table` or `--add-primary-publications`, `classify` only writes CSVs (`classified_publications.csv`, `primary_publications.csv`, `cited_by.csv`).
 
 #### Synapse safety
@@ -192,7 +196,7 @@ Runs every **Monday at 22:00 UTC**.
 - Commits the updated tracking file back to the repository
 - Runs `search` for articles outside the Open Access download, adding new rows to the results table
 - Runs `classify`, appends new primary pairs to the publications table and new secondary/review/mention pairs to Cited By, and attaches the CSVs to the run's artifacts
-- When rows were added, opens a `publication-review` issue listing them, lowest confidence first (no issue when nothing was added)
+- When rows were added or updated, opens a `publication-review` issue listing them (lowest confidence first), preprints replaced by their published versions, and the low-confidence pairs left out; no issue when nothing changed
 
 Can be triggered manually from the Actions tab with an optional `max_files` parameter for testing, and `recheck_existing` to re-mine articles already in the table (a one-off backfill of IDs older parser versions missed).
 

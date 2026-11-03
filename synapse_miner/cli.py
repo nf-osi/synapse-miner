@@ -634,7 +634,8 @@ def run_classify_workflow(args, logger):
     import os
     from synapse_miner.portal_tables import (
         CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, build_cited_by, build_primary,
-        create_cited_by_table, drop_existing_pairs, load_pair_keys, review_issue,
+        create_cited_by_table, drop_existing_pairs, load_pair_keys, not_added, review_issue,
+        update_preprint_rows,
     )
     from synapse_miner.classify import classify_publications
     from synapse_miner.utils.europepmc_client import EuropePMCClient
@@ -676,10 +677,18 @@ def run_classify_workflow(args, logger):
     cited_by_table = args.cited_by_table
     if not (cited_by_table or args.create_cited_by_table_in or args.add_primary_publications):
         return
-    additions, failed = {}, False
+    additions, replaced, to_remove, failed = {}, [], [], False
+    existing = set()
     try:
         if args.create_cited_by_table_in:
             cited_by_table = create_cited_by_table(syn, args.create_cited_by_table_in)
+        # Point existing preprint rows at their published versions first, so a
+        # published version is not appended next to its own preprint
+        for table_id, is_cited_by in ((args.publications_table, False), (cited_by_table, True)):
+            if table_id and (is_cited_by or args.add_primary_publications):
+                done, manual = update_preprint_rows(syn, table_id, epmc, cited_by=is_cited_by)
+                replaced += done
+                to_remove += manual
         # A pair already in either table is never added again, to either table
         existing = load_pair_keys(syn, args.publications_table)
         if cited_by_table:
@@ -698,8 +707,8 @@ def run_classify_workflow(args, logger):
         logger.error(f"Failed to update the portal publication tables: {e}")
         failed = True
 
-    # Rows appended before a failure still get a review issue
-    issue = review_issue(additions)
+    # Changes made before a failure still get a review issue
+    issue = review_issue(additions, replaced, to_remove, not_added(results, existing))
     if issue and args.review_issue_output:
         title, body = issue
         with open(args.review_issue_output, "w") as f:
@@ -708,7 +717,7 @@ def run_classify_workflow(args, logger):
             f.write(title)
         logger.info(f"Wrote review issue to {args.review_issue_output}")
     elif not issue:
-        logger.info("No rows were added; no review issue needed")
+        logger.info("No rows were added or replaced; no review issue needed")
     if failed:
         sys.exit(1)
 

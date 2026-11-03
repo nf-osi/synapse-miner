@@ -8,9 +8,10 @@ import pandas as pd
 import pytest
 
 from synapse_miner import portal_tables
+from synapse_miner.classify import use_published_versions
 from synapse_miner.portal_tables import (
     CITED_BY_COLUMNS, PUBLICATION_COLUMNS, _for_upload, append_rows, build_cited_by,
-    build_primary, drop_existing_pairs, pair_keys, review_issue,
+    build_primary, drop_existing_pairs, not_added, pair_keys, review_issue, update_preprint_rows,
 )
 from synapse_miner.utils import synapse_safety
 
@@ -134,7 +135,8 @@ def test_review_issue_lists_lower_confidence_first():
                                _row("syn11638893", "mention", confidence="medium",
                                     title="A lower confidence mention")])
     title, body = review_issue({"syn78484103": build_cited_by(classified, STUDIES)})
-    assert title.startswith("Review 2 new publication rows")
+    assert title.startswith("Review publication table changes")
+    assert "2 rows added" in body
     assert body.index("| medium | mention") < body.index("| high | secondary")
 
 
@@ -142,3 +144,109 @@ def test_titles_lose_inline_markup():
     classified = pd.DataFrame([_row("syn4939902", "secondary",
                                     title="Loss of <i>NF1</i> in &lt;i&gt;NF2&lt;/i&gt; cells")])
     assert build_cited_by(classified, STUDIES).iloc[0]["title"] == "Loss of NF1 in NF2 cells"
+
+
+# CDK4/6 inhibition paper: bioRxiv preprint PMID 36778419 -> Sci Adv PMID 38000020
+PREPRINT_META = {"pmid": "36778419", "pmcid": "PMC9915673", "updated_in": ["38000020"],
+                 "title": "CDK4/6 inhibition ... (preprint)", "authors": []}
+PUBLISHED_META = {"pmid": "38000020", "pmcid": "PMC10672174", "doi": "10.1126/sciadv.adg8876",
+                  "title": "CDK4/6 inhibition enhances SHP2 inhibitor efficacy", "journal": "Science advances",
+                  "year": "2023", "updated_in": [],
+                  "authors": [{"firstName": "Angela C", "lastName": "Hirbe"}]}
+
+
+class FakeEPMC:
+    def get_metadata_by_pmid(self, pmids):
+        known = {"36778419": PREPRINT_META, "38000020": PUBLISHED_META}
+        return {p: known[p] for p in pmids if p in known}
+
+
+def _preprint_row(**extra):
+    return _row("syn4939902", "primary", pmcid="PMC9915673", pmid="36778419", doi="10.1101/2023.02.02.526674",
+                title="CDK4/6 inhibition ... (preprint)", journal="bioRxiv", year="2023",
+                is_preprint=True, replaces_preprint=None, **extra)
+
+
+def test_preprint_row_takes_published_version():
+    out = use_published_versions(pd.DataFrame([_preprint_row()]),
+                                 {"PMC9915673": PREPRINT_META}, FakeEPMC())
+    row = out.iloc[0]
+    assert (row["pmid"], row["doi"], row["journal"]) == ("38000020", "10.1126/sciadv.adg8876", "Science advances")
+    assert row["replaces_preprint"] == "36778419"
+    assert row["relationship"] == "primary" and not row["is_preprint"]
+
+
+def test_preprint_row_dropped_when_published_version_is_classified():
+    published = _row("syn4939902", "primary", pmcid="PMC10672174", pmid="38000020", is_preprint=False,
+                     replaces_preprint=None)
+    out = use_published_versions(pd.DataFrame([_preprint_row(), published]),
+                                 {"PMC9915673": PREPRINT_META}, FakeEPMC())
+    assert list(out["pmid"]) == ["38000020"]
+
+
+class FakeQuery:
+    def __init__(self, df):
+        self.df = df
+
+    def asDataFrame(self, rowIdAndVersionInIndex=True):
+        return self.df
+
+
+class FakeTableSyn(FakeSyn):
+    def __init__(self, rows):
+        super().__init__()
+        self.rows = rows
+
+    def tableQuery(self, sql):
+        self.calls.append(("query", sql))
+        return FakeQuery(self.rows)
+
+
+def test_existing_preprint_rows_are_updated_in_place(monkeypatch):
+    captured = {}
+    monkeypatch.setattr("synapseclient.PartialRowset.from_mapping",
+                        lambda mapping, result: captured.setdefault("mapping", mapping))
+    syn = FakeTableSyn(pd.DataFrame({"ROW_ID": [7], "pmid": ["PMID:36778419"], "title": ["preprint"],
+                                     "studyId": [["syn21984813"]]}))
+    updated, manual = update_preprint_rows(syn, "syn78484103", FakeEPMC(), cited_by=True)
+    assert manual == []
+    assert updated[0]["published_pmid"] == "38000020"
+    values = captured["mapping"][7]
+    assert values["pmid"] == "PMID:38000020" and values["isPreprint"] is False
+    assert values["author"] == ["Angela C Hirbe"]
+    # Snapshot, then a fresh query for current row etags, then store, then snapshot
+    kinds = [c[0] for c in syn.calls]
+    assert kinds == ["query", "snapshot", "query", "store", "snapshot"]
+
+
+def test_preprint_row_duplicating_its_published_version_is_left_for_a_human(monkeypatch):
+    syn = FakeTableSyn(pd.DataFrame({"ROW_ID": [7, 8], "pmid": ["PMID:36778419", "PMID:38000020"],
+                                     "title": ["preprint", "published"],
+                                     "studyId": [["syn21984813"], ["syn21984813"]]}))
+    updated, manual = update_preprint_rows(syn, "syn16857542", FakeEPMC())
+    assert updated == []
+    assert [m["row_id"] for m in manual] == [7]
+    assert not any(c[0] in ("store", "snapshot") for c in syn.calls)
+
+
+def test_issue_lists_low_confidence_pairs_not_added_but_they_alone_do_not_open_one():
+    classified = pd.DataFrame([_row("syn4939902", "unclear", confidence="low", reason="no full text"),
+                               _row("syn11638893", "primary", confidence="low", reason="weak")])
+    left_out = not_added(classified, set())
+    assert len(left_out) == 2
+    empty = build_cited_by(DEHNER, STUDIES).iloc[0:0]
+    assert review_issue({"syn78484103": empty}, left_out=left_out) is None
+    _, body = review_issue({"syn78484103": build_cited_by(DEHNER, STUDIES)}, left_out=left_out)
+    assert "Not added: 2 low-confidence pairs" in body
+    # A pair already in a table is not reported as left out
+    assert len(not_added(classified, pair_keys(pd.DataFrame(
+        {"pmid": ["PMID:33591953"], "doi": [None], "studyId": [["syn4939902"]]})))) == 1
+
+
+def test_issue_reports_replaced_and_duplicate_preprints():
+    record = {"table": "syn16857542", "row_id": 7, "preprint_pmid": "36778419",
+              "published_pmid": "38000020", "title": "CDK4/6", "studies": ["syn21984813"]}
+    empty = build_cited_by(DEHNER, STUDIES).iloc[0:0]
+    _, body = review_issue({"syn16857542": empty}, replaced=[record], to_remove=[record])
+    assert "Preprints replaced by their published versions (1)" in body
+    assert "Preprint rows to remove by hand (1)" in body
