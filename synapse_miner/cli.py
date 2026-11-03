@@ -243,6 +243,47 @@ def main() -> None:
             help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
 
+    # Publication classification command
+    if SYNAPSE_AVAILABLE:
+        classify_parser = subparsers.add_parser(
+            "classify",
+            help="Label mined papers as primary, secondary, review or mention for each NF Data Portal study"
+        )
+        classify_parser.add_argument(
+            "--table-id",
+            default="syn66047339",
+            help="Synapse table of mined mentions (default: syn66047339)"
+        )
+        classify_parser.add_argument(
+            "--studies-view",
+            default="syn52677631",
+            help="Portal studies view (default: syn52677631)"
+        )
+        classify_parser.add_argument(
+            "--publications-table",
+            default="syn16857542",
+            help="Portal publications table, used to flag already-tracked papers (default: syn16857542)"
+        )
+        classify_parser.add_argument(
+            "--funder",
+            action="append",
+            help="Only keep studies funded by this agency (e.g. NTAP); repeat for several"
+        )
+        classify_parser.add_argument(
+            "-o", "--output",
+            default="classified_publications.csv",
+            help="Output CSV, one row per (paper, study) (default: classified_publications.csv)"
+        )
+        classify_parser.add_argument(
+            "--cache-dir",
+            default=".cache/classify",
+            help="Directory caching Europe PMC responses and Synapse project lookups (default: .cache/classify)"
+        )
+        classify_parser.add_argument(
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
+        )
+
     args = parser.parse_args()
 
     # Set up logging
@@ -298,6 +339,9 @@ def main() -> None:
         elif args.command == "labslinks" and SYNAPSE_AVAILABLE:
             # Generate LabLinks XML from Synapse table
             run_labslinks_workflow(args, logger)
+
+        elif args.command == "classify" and SYNAPSE_AVAILABLE:
+            run_classify_workflow(args, logger)
 
         else:
             parser.print_help()
@@ -504,6 +548,37 @@ def run_ebisearch_workflow(args, logger):
         db_description=args.db_description,
     )
     logger.info(f"Done — EBI Search XML written to {output_path}")
+
+
+def run_classify_workflow(args, logger):
+    """Classify mined papers by how they relate to NF Data Portal studies."""
+    import os
+    from synapse_miner.classify import classify_publications
+    from synapse_miner.utils.europepmc_client import EuropePMCClient
+    from synapse_miner.utils.study_resolver import (
+        StudyResolver, load_studies, load_tracked_publications,
+    )
+
+    token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+    try:
+        syn = SynapseUploader(pat=token).syn
+    except Exception as e:
+        logger.error(f"Failed to initialize Synapse client: {e}")
+        sys.exit(1)
+
+    try:
+        mentions = syn.tableQuery(f"SELECT pmcid, synid, context FROM {args.table_id}").asDataFrame()
+        studies = load_studies(syn, args.studies_view)
+        tracked = load_tracked_publications(syn, args.publications_table)
+    except Exception as e:
+        logger.error(f"Failed to load Synapse tables: {e}")
+        sys.exit(1)
+
+    resolver = StudyResolver(syn, studies, cache_path=os.path.join(args.cache_dir, "projects.json"))
+    epmc = EuropePMCClient(cache_dir=os.path.join(args.cache_dir, "europepmc"))
+    results = classify_publications(mentions, studies, tracked, resolver, epmc, funders=args.funder)
+    results.to_csv(args.output, index=False)
+    logger.info(f"Wrote {len(results)} paper-study rows to {args.output}")
 
 
 if __name__ == "__main__":

@@ -79,6 +79,30 @@ Optional overrides (defaults shown):
 
 Upload both output files to the EuropePMC LabsLink FTP once generated.
 
+### `synapse-miner classify` — label papers as primary or secondary use
+
+Maps each mined Synapse ID to its NF Data Portal study ([syn52677631](https://www.synapse.org/Synapse/syn52677631)), reads each paper's full text from Europe PMC, and labels every (paper, study) pair from the wording around the ID:
+
+| Relationship | Meaning | Typical wording |
+|--------------|---------|-----------------|
+| `primary` | The paper generated or deposited the study's data | "have been deposited in", "generated in this study", data descriptor or data-availability statement by a study lead |
+| `secondary` | The paper reused data already on the portal | "downloaded from", "imported from", "accessed on <date>", "provided by" |
+| `review` | Review article citing the study | Europe PMC publication type |
+| `mention` | Cites the study without depositing or reusing data | Bare ID or wiki link, no study lead among authors |
+| `unclear` | Not enough to tell; needs a human look | e.g. no full text, or only a bare ID with a study lead as author |
+
+A study lead among the authors only decides weak cases. Funders count a paper as secondary when it reanalyses data already on the portal, even when a study lead is a co-author.
+
+```bash
+export SYNAPSE_PAT="your_token"
+
+synapse-miner classify \
+  -o classified_publications.csv \
+  [--funder NTAP]        # repeat for several funders
+```
+
+Each output row is one (paper, study) pair with the label, a confidence (`high`/`medium`/`low`), the reason, the supporting sentences (`evidence`), study leads found among the authors, and whether the paper is already in the portal publications table ([syn16857542](https://www.synapse.org/Synapse/syn16857542)) and linked to that study. Europe PMC responses and Synapse lookups are cached in `--cache-dir` (default `.cache/classify`), so reruns only fetch new papers.
+
 ## Output
 
 | File | Description |
