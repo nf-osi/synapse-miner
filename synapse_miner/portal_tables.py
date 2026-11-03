@@ -372,14 +372,15 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
         return None
     left_out_total = len(left_out) if left_out_total is None else left_out_total
     url = run_url()
-    summary = [f"{total} rows added"] + ([f"{len(replaced)} preprints replaced by their published versions"]
-                                         if replaced else []) \
+    summary = ([f"{total} rows added"] if total else []) \
+              + ([f"{len(replaced)} preprints replaced by their published versions"] if replaced else []) \
               + ([f"{len(to_remove)} preprint rows to remove by hand"] if to_remove else []) \
               + ([f"{len(left_out)} new low-confidence pairs not added"] if not left_out.empty else [])
     lines = [
         f"This run of the NF Data Portal publication pipeline: {', '.join(summary)}. "
-        "Please check the additions, especially the lower-confidence rows at the top of each table, "
-        "and fix or remove any that are wrong. Add any left-out pairs that belong by hand.",
+        + ("Please check the additions, especially the lower-confidence rows at the top of each table, "
+           "and fix or remove any that are wrong. " if total else "")
+        + ("Add any left-out pairs that belong by hand." if not left_out.empty else ""),
         "",
         "- **primary** rows go to the publications table: the paper generated or deposited the study's data.",
         "- **secondary / review / mention** rows go to the Cited By table: the paper reused, "
@@ -426,12 +427,14 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
                   + (f" {earlier} more were reported in earlier issues and are still left out; all "
                      f"{left_out_total} are in the run's `classified_publications.csv`." if earlier > 0 else ""),
                   "", "<details><summary>Show them</summary>", "",
-                  "| Relationship | Paper | Study | Reason |", "|---|---|---|---|"]
+                  "| Relationship | Paper | Study | Reason | Evidence |", "|---|---|---|---|---|"]
         for row in left_out.itertuples(index=False):
             pmid = _pmid_digits(row.pmid)
             paper = _paper_link(pmid, _plain_title(row.title)) if pmid else f"{row.pmcid} {_plain_title(row.title) or ''}"[:120]
-            lines.append(f"| {row.relationship} ({row.confidence}) | {paper} | {row.study_id} "
-                         f"| {str(row.reason).replace('|', '/')} |")
+            study_name = str(getattr(row, "study_name", "") or "")[:60]
+            evidence = str(row.evidence or "").split("\n")[0][:250].replace("|", "/")
+            lines.append(f"| {row.relationship} ({row.confidence}) | {paper} | {row.study_id} {study_name} "
+                         f"| {str(row.reason).replace('|', '/')} | {evidence} |")
         lines += ["", "</details>", ""]
     title = (f"Review publication table changes ({pd.Timestamp.today().date().isoformat()})"
              if (total or replaced or to_remove) else
