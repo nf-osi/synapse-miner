@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from .utils.europepmc_client import EuropePMCClient, author_names, normalize_pmcid
+from .utils.crossref_client import CrossrefClient, clean_journal_title
 from .utils.ncbi_pmc_client import NCBIPMCClient
 from .utils.reuse_classifier import (
     Mention, classify_mention, classify_pair, extract_mentions,
@@ -113,7 +114,8 @@ def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
                           tracked: Dict[str, Dict], resolver: StudyResolver,
                           epmc: EuropePMCClient,
                           funders: Optional[List[str]] = None,
-                          ncbi: Optional[NCBIPMCClient] = None) -> pd.DataFrame:
+                          ncbi: Optional[NCBIPMCClient] = None,
+                          crossref: Optional[CrossrefClient] = None) -> pd.DataFrame:
     """
     Label each (paper, study) pair found in the mined mentions.
 
@@ -126,6 +128,8 @@ def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
         funders: Only keep studies funded by one of these agencies
         ncbi: NCBI PMC client used for full text Europe PMC does not serve
               (e.g. NIH author manuscripts)
+        crossref: Crossref client for journal names in the publisher's casing
+              (without it, Europe PMC's titles are only tidied)
 
     Returns:
         DataFrame with OUTPUT_COLUMNS, one row per (paper, study)
@@ -212,6 +216,8 @@ def classify_publications(mentions_df: pd.DataFrame, studies: Dict[str, Dict],
             })
 
     out = use_published_versions(pd.DataFrame(rows, columns=OUTPUT_COLUMNS), metadata, epmc)
+    out["journal"] = [crossref.journal_name(doi, journal) if crossref else clean_journal_title(journal)
+                      for doi, journal in zip(out["doi"], out["journal"])]
     counts = out["relationship"].value_counts().to_dict()
     logger.info(f"Classified {len(out)} paper-study pairs: {counts}")
     return out

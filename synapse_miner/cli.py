@@ -646,6 +646,7 @@ def run_classify_workflow(args, logger):
     )
     from synapse_miner.classify import classify_publications
     from synapse_miner.utils.europepmc_client import EuropePMCClient
+    from synapse_miner.utils.crossref_client import CrossrefClient
     from synapse_miner.utils.ncbi_pmc_client import NCBIPMCClient
     from synapse_miner.utils.study_resolver import (
         StudyResolver, load_studies, load_tracked_publications,
@@ -669,8 +670,9 @@ def run_classify_workflow(args, logger):
     resolver = StudyResolver(syn, studies, cache_path=os.path.join(args.cache_dir, "projects.json"))
     epmc = EuropePMCClient(cache_dir=os.path.join(args.cache_dir, "europepmc"))
     ncbi = NCBIPMCClient(cache_dir=os.path.join(args.cache_dir, "ncbi"))
+    crossref = CrossrefClient(cache_path=os.path.join(args.cache_dir, "crossref.json"))
     results = classify_publications(mentions, studies, tracked, resolver, epmc,
-                                    funders=args.funder, ncbi=ncbi)
+                                    funders=args.funder, ncbi=ncbi, crossref=crossref)
     results.to_csv(args.output, index=False)
     logger.info(f"Wrote {len(results)} paper-study rows to {args.output}")
 
@@ -693,7 +695,8 @@ def run_classify_workflow(args, logger):
         # published version is not appended next to its own preprint
         for table_id, is_cited_by in ((args.publications_table, False), (cited_by_table, True)):
             if table_id and (is_cited_by or args.add_primary_publications):
-                done, manual = update_preprint_rows(syn, table_id, epmc, cited_by=is_cited_by)
+                done, manual = update_preprint_rows(syn, table_id, epmc, cited_by=is_cited_by,
+                                                    crossref=crossref)
                 replaced += done
                 to_remove += manual
         # A pair already in either table is never added again, to either table

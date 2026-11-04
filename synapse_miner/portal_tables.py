@@ -22,6 +22,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
 
+from .utils.crossref_client import clean_journal_title
 from .utils.europepmc_client import author_names
 from .utils.synapse_safety import run_url, snapshots_around
 
@@ -112,6 +113,14 @@ def _plain_title(value) -> Optional[str]:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html.unescape(html.unescape(str(value))))).strip()
 
 
+def doi_url(value) -> Optional[str]:
+    """DOI as an https://doi.org/ link, the form the portal cards render as a link."""
+    if _missing(value):
+        return None
+    doi = re.sub(r"^(https?://(dx\.)?doi\.org/|doi:\s*)", "", str(value).strip(), flags=re.I)
+    return f"https://doi.org/{doi}"
+
+
 def _fit(name: str, value) -> Optional[str]:
     if _missing(value):
         return None
@@ -143,7 +152,7 @@ def build_rows(classified: pd.DataFrame, studies: Dict[str, Dict], relationships
         pmid = None if _missing(row.pmid) else f"PMID:{str(row.pmid).split('.')[0]}"
         authors = [] if _missing(row.authors) else str(row.authors).split("; ")
         rows.append({
-            "doi": None if _missing(row.doi) else str(row.doi),
+            "doi": doi_url(row.doi),
             "diseaseFocus": _fit("diseaseFocus", disease[0] if len(disease) == 1 else
                                  (", ".join(disease) if disease else None)),
             "journal": _fit("journal", row.journal),
@@ -297,7 +306,8 @@ def save_reported(path: str, keys: Set[str]) -> None:
         f.write("\n")
 
 
-def update_preprint_rows(syn, table_id: str, epmc, cited_by: bool = False) -> Tuple[List[Dict], List[Dict]]:
+def update_preprint_rows(syn, table_id: str, epmc, cited_by: bool = False,
+                         crossref=None) -> Tuple[List[Dict], List[Dict]]:
     """
     Point rows for preprints at their published versions, in place.
 
@@ -347,9 +357,10 @@ def update_preprint_rows(syn, table_id: str, epmc, cited_by: bool = False) -> Tu
             continue
         values = {
             "pmid": f"PMID:{published_pmid}",
-            "doi": m.get("doi"),
+            "doi": doi_url(m.get("doi")),
             "title": _plain_title(m.get("title")),
-            "journal": _fit("journal", m.get("journal")),
+            "journal": _fit("journal", crossref.journal_name(m.get("doi"), m.get("journal")) if crossref
+                            else clean_journal_title(m.get("journal"))),
             "year": int(m["year"]) if m.get("year") else None,
             "author": _fit_list("author", author_names(m)),
         }

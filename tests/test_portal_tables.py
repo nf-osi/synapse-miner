@@ -273,3 +273,25 @@ def test_long_manifestations_use_short_forms_not_cut_off():
                                                 "Plexiform Neurofibroma"]}}
     row = build_cited_by(pd.DataFrame([_row("syn4939902", "secondary")]), studies).iloc[0]
     assert row["manifestation"] == ["MPNST", "JMML", "Plexiform Neurofibroma"]
+
+
+def test_doi_stored_as_link():
+    from synapse_miner.portal_tables import doi_url
+    assert doi_url("10.1126/sciadv.adg8876") == "https://doi.org/10.1126/sciadv.adg8876"
+    assert doi_url("https://doi.org/10.1126/sciadv.adg8876") == "https://doi.org/10.1126/sciadv.adg8876"
+    assert doi_url(None) is None
+    assert build_cited_by(DEHNER, STUDIES).iloc[0]["doi"] == "https://doi.org/10.1172/jci.insight.146351"
+
+
+@pytest.mark.parametrize("epmc, expected", [
+    ("Science advances", "Science Advances"),
+    ("Clinical cancer research : an official journal of the American Association for Cancer Research",
+     "Clinical Cancer Research"),
+    ("Gels (Basel, Switzerland)", "Gels"),
+    ("Journal of neuro-oncology", "Journal of Neuro-oncology"),
+    ("eLife", "eLife"),
+    ("npj precision oncology", "npj Precision Oncology"),
+])
+def test_journal_title_fallback(epmc, expected):
+    from synapse_miner.utils.crossref_client import clean_journal_title
+    assert clean_journal_title(epmc) == expected
