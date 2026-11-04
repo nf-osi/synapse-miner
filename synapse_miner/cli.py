@@ -437,6 +437,31 @@ def main() -> None:
         logger.error(f"Error: {e}")
         sys.exit(1)
 
+# Runs a file may fail in before it is no longer retried
+MAX_FILE_ATTEMPTS = 4
+
+
+def retry_list(failed_before, failed_now, missing, logger):
+    """
+    Files to retry next run, as {filename: runs it has failed in}.
+
+    A file that keeps failing is dropped after MAX_FILE_ATTEMPTS runs (logged
+    as an error, so it can be mined by hand), as is one that is no longer in
+    the directory listing.
+    """
+    retry = {}
+    for name in failed_now:
+        count = failed_before.get(name, 0) + 1
+        if count >= MAX_FILE_ATTEMPTS:
+            logger.error(f"{name} failed in {count} runs; no longer retrying it. "
+                         f"Mine it by hand with: synapse-miner http -u <url> -o <csv> --start-from {name} --max-files 1")
+        else:
+            retry[name] = count
+    for name in missing:
+        logger.error(f"{name} failed in an earlier run and is no longer in the listing; not retrying it")
+    return retry
+
+
 def run_automated_workflow(args, logger):
     """Run the automated weekly workflow with Synapse integration."""
     import os
@@ -452,6 +477,10 @@ def run_automated_workflow(args, logger):
             logger.info(f"Resuming from last processed PMC ID: {last_pmc_id}")
         else:
             logger.info("No previous processing state found, starting from beginning")
+        failed_before = tracker.get_failed_files()
+        if failed_before:
+            logger.info(f"Will retry {len(failed_before)} files that failed in earlier runs: "
+                        f"{', '.join(sorted(failed_before))}")
         
         # Initialize Synapse uploader
         try:
@@ -494,15 +523,16 @@ def run_automated_workflow(args, logger):
                 base_url=args.url,
                 output_path=args.output,
                 start_from=start_from,
-                max_files=args.max_files
+                max_files=args.max_files,
+                retry_files=sorted(failed_before)
             )
         except Exception as e:
             logger.error(f"Failed to process files from HTTP server: {e}")
             sys.exit(1)
+        failed_files = retry_list(failed_before, miner.failed_files, miner.missing_retry_files, logger)
         
         if not last_processed_file:
             logger.warning("No new files were processed")
-            return
         
         # Find generated batch files
         batch_files = glob.glob(batch_pattern)
@@ -529,13 +559,15 @@ def run_automated_workflow(args, logger):
             logger.info("No Synapse IDs found in processed files; nothing to upload")
         
         # Update tracking file with the end of the last processed file, even if
-        # it had no findings, so the next run starts with the following file
-        last_processed_pmc = tracker.extract_ending_pmc_id(last_processed_file)
-        if last_processed_pmc:
-            tracker.update_last_processed_pmc_id(last_processed_pmc)
-            logger.info(f"Updated tracking file with last processed PMC ID: {last_processed_pmc}")
-        else:
+        # it had no findings, so the next run starts with the following file;
+        # files that failed are kept in the tracking file and retried next run
+        last_processed_pmc = tracker.extract_ending_pmc_id(last_processed_file) if last_processed_file else None
+        if last_processed_file and not last_processed_pmc:
             logger.warning(f"Could not extract PMC ID from filename: {last_processed_file}")
+        tracker.update_last_processed_pmc_id(last_processed_pmc, failed_files=failed_files)
+        if failed_files:
+            logger.warning(f"{len(failed_files)} files failed and will be retried next run: "
+                           f"{', '.join(sorted(failed_files))}")
         
         logger.info("Workflow completed successfully")
             

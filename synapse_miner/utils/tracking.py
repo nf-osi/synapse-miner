@@ -5,7 +5,7 @@ Tracking utilities for managing processing state.
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +40,51 @@ class ProcessingTracker:
             logger.error(f"Error reading tracking file: {e}")
             return None
     
-    def update_last_processed_pmc_id(self, pmc_id: str) -> bool:
+    def _read(self) -> dict:
+        """The tracking file's contents, or {} if it is missing or unreadable."""
+        try:
+            if self.tracking_file.exists():
+                with open(self.tracking_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading tracking file: {e}")
+        return {}
+
+    def get_failed_files(self) -> Dict[str, int]:
+        """
+        Batch files that failed in earlier runs and should be retried.
+
+        Returns:
+            {filename: number of runs in which it has failed}
+        """
+        failed = self._read().get('failed_files') or {}
+        if isinstance(failed, list):
+            failed = {name: 1 for name in failed}
+        return {str(name): int(count) for name, count in failed.items()}
+
+    def update_last_processed_pmc_id(self, pmc_id: Optional[str],
+                                     failed_files: Optional[Dict[str, int]] = None) -> bool:
         """
         Update the last processed PMC ID in tracking file.
         
         Args:
-            pmc_id: The ending PMC ID of the batch file that was processed
+            pmc_id: The ending PMC ID of the batch file that was processed, or
+                None to keep the current one
+            failed_files: Batch files to retry next run ({filename: failed
+                runs}); None keeps the current list
             
         Returns:
             True if successful, False otherwise
         """
         try:
+            current = self._read()
             data = {
-                'last_processed_pmc_id': pmc_id,
+                'last_processed_pmc_id': pmc_id or current.get('last_processed_pmc_id'),
                 'updated_at': f"{__import__('datetime').datetime.now().isoformat()}"
             }
+            failed = self.get_failed_files() if failed_files is None else failed_files
+            if failed:
+                data['failed_files'] = dict(sorted(failed.items()))
             
             # Ensure directory exists
             self.tracking_file.parent.mkdir(parents=True, exist_ok=True)
@@ -62,7 +92,8 @@ class ProcessingTracker:
             with open(self.tracking_file, 'w') as f:
                 json.dump(data, f, indent=2)
                 
-            logger.info(f"Updated tracking file with PMC ID: {pmc_id}")
+            logger.info(f"Updated tracking file with PMC ID: {data['last_processed_pmc_id']}"
+                        + (f" and {len(failed)} files to retry" if failed else ""))
             return True
         except Exception as e:
             logger.error(f"Error updating tracking file: {e}")

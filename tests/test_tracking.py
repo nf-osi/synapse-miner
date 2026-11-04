@@ -109,3 +109,58 @@ def test_get_resume_pmc_id():
     finally:
         if os.path.exists(tracking_file):
             os.remove(tracking_file)
+
+
+def test_failed_files_persist_and_merge(tmp_path):
+    """Failed files are stored with the resume point and kept across updates."""
+    tracker = ProcessingTracker(str(tmp_path / "t.json"))
+    assert tracker.get_failed_files() == {}
+    tracker.update_last_processed_pmc_id("PMC200", failed_files={"PMC1_PMC100.xml.gz": 1})
+    assert tracker.get_failed_files() == {"PMC1_PMC100.xml.gz": 1}
+    # None keeps both the resume point and the failed list
+    tracker.update_last_processed_pmc_id(None)
+    assert tracker.get_last_processed_pmc_id() == "PMC200"
+    assert tracker.get_failed_files() == {"PMC1_PMC100.xml.gz": 1}
+    # An empty dict clears the list
+    tracker.update_last_processed_pmc_id("PMC300", failed_files={})
+    assert tracker.get_failed_files() == {}
+    assert "failed_files" not in json.loads((tmp_path / "t.json").read_text())
+
+
+def test_retry_list_counts_and_gives_up():
+    import logging
+    from synapse_miner.cli import retry_list, MAX_FILE_ATTEMPTS
+    log = logging.getLogger("test")
+    before = {"A": 1, "B": MAX_FILE_ATTEMPTS - 1, "C": 2}
+    # A failed again, B hits the limit, C succeeded (absent), D is new, E vanished
+    assert retry_list(before, ["A", "B", "D"], ["E"], log) == {"A": 2, "D": 1}
+
+
+def test_process_http_files_retries_and_keeps_resume_point(tmp_path, monkeypatch):
+    """Retried files run first, failures are reported, and only new files move the resume point."""
+    import urllib.request
+    from synapse_miner.core import SynapseMiner
+
+    names = ["PMC1_PMC100.xml.gz", "PMC101_PMC200.xml.gz", "PMC201_PMC300.xml.gz", "PMC301_PMC400.xml.gz"]
+    listing = "".join(f'<a href="{n}">{n}</a>' for n in names)
+    miner = SynapseMiner()
+    monkeypatch.setattr(miner, "_make_request", lambda url: listing)
+    monkeypatch.setattr(miner, "_process_xml_file", lambda *a, **k: [])
+    monkeypatch.setattr("synapse_miner.core.time.sleep", lambda s: None)
+    order = []
+
+    def fake_retrieve(url, path, reporthook=None):
+        order.append(url.rsplit("/", 1)[-1])
+        if "PMC301_" in url:
+            raise OSError("Connection refused")
+        open(path, "wb").close()
+
+    monkeypatch.setattr(urllib.request, "urlretrieve", fake_retrieve)
+    last = miner.process_http_files("https://example.org/oa/", str(tmp_path / "out.csv"),
+                                    start_from="PMC201",
+                                    retry_files=["PMC1_PMC100.xml.gz", "PMC9_PMC9.xml.gz"])
+    assert order[0] == "PMC1_PMC100.xml.gz"
+    assert "PMC101_PMC200.xml.gz" not in order
+    assert last == "PMC201_PMC300.xml.gz"
+    assert miner.failed_files == ["PMC301_PMC400.xml.gz"]
+    assert miner.missing_retry_files == ["PMC9_PMC9.xml.gz"]
