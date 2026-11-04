@@ -165,6 +165,16 @@ class EuropePMCClient:
             for article in (response.json().get("resultList", {}).get("result", []) if response else []):
                 if article.get("pmid"):
                     by_pmid[article["pmid"]] = _summarize(article)
+            # The OR query can drop records a single-ID query finds (seen
+            # with a Research Square preprint), so retry those one at a time
+            for pmid in chunk:
+                if pmid in by_pmid:
+                    continue
+                single = self._get(f"{EUROPEPMC_REST}/search", params={
+                    "query": f"EXT_ID:{pmid} AND SRC:MED", "format": "json", "resultType": "core"})
+                found = single.json().get("resultList", {}).get("result", []) if single else []
+                if found:
+                    by_pmid[pmid] = _summarize(found[0])
             self._save_metadata()
         return {p: by_pmid[p] for p in wanted if p in by_pmid}
 
