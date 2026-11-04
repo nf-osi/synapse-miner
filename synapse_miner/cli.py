@@ -574,7 +574,10 @@ def run_automated_workflow(args, logger):
             # Safety net: the resume point only moves forward
             logger.error(f"Not moving the resume point back from {last_pmc_id} to {last_processed_pmc}")
             last_processed_pmc = None
-        tracker.update_last_processed_pmc_id(last_processed_pmc, failed_files=failed_files)
+        if last_processed_pmc or failed_files != failed_before:
+            tracker.update_last_processed_pmc_id(last_processed_pmc, failed_files=failed_files)
+        else:
+            logger.info("Tracking file unchanged")
         if failed_files:
             logger.warning(f"{len(failed_files)} files failed and will be retried next run: "
                            f"{', '.join(sorted(failed_files))}")
