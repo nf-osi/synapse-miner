@@ -69,10 +69,39 @@ def _missing(value) -> bool:
     return value is None or (isinstance(value, float) and math.isnan(value)) or value == ""
 
 
+# Short forms the publications table already uses for studies-view values
+# longer than its 30-character manifestation limit
+MANIFESTATION_SHORT_FORMS = {
+    "Malignant Peripheral Nerve Sheath Tumor": "MPNST",
+    "Juvenile Myelomonocytic Leukemia": "JMML",
+}
+
+
 def _fit_list(name: str, values: Iterable[str]) -> List[str]:
-    """Trim a list to the column's item count and item length."""
+    """
+    Fit a list to the column's item count and item length.
+
+    Controlled values (manifestation, fundingAgency, studyId) are never cut
+    off part way, which would make a new, wrong value: long manifestations
+    use their short form, and any other value that is too long is dropped
+    with a warning. Free text (author, studyName) is shortened.
+    """
     spec = _LIMITS[name]
-    items = [str(v).strip()[:spec["maximumSize"]] for v in values if not _missing(v) and str(v).strip()]
+    size = spec["maximumSize"]
+    items = []
+    for value in values:
+        if _missing(value) or not str(value).strip():
+            continue
+        value = str(value).strip()
+        if name == "manifestation":
+            value = MANIFESTATION_SHORT_FORMS.get(value, value)
+        if len(value) > size:
+            if name in ("author", "studyName"):
+                value = value[:size]
+            else:
+                logger.warning(f"Leaving out {name} value longer than {size} characters: {value!r}")
+                continue
+        items.append(value)
     return items[:spec["maximumListLength"]]
 
 

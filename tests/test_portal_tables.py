@@ -263,3 +263,13 @@ def test_reported_pairs_round_trip(tmp_path):
     assert load_reported(path) == set()
     save_reported(path, keys)
     assert load_reported(path) == keys
+
+
+def test_long_manifestations_use_short_forms_not_cut_off():
+    studies = {"syn4939902": {**STUDIES["syn4939902"],
+                              "manifestation": ["Malignant Peripheral Nerve Sheath Tumor",
+                                                "Juvenile Myelomonocytic Leukemia",
+                                                "Some Other Very Long Manifestation Name",
+                                                "Plexiform Neurofibroma"]}}
+    row = build_cited_by(pd.DataFrame([_row("syn4939902", "secondary")]), studies).iloc[0]
+    assert row["manifestation"] == ["MPNST", "JMML", "Plexiform Neurofibroma"]
