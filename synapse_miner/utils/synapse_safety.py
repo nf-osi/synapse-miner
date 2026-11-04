@@ -14,7 +14,7 @@ the workflow run link, e.g.
 import logging
 import os
 from contextlib import contextmanager
-from datetime import date
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,8 @@ def run_url() -> str:
 def snapshot_comment(when: str, action: str) -> str:
     """'<date> <when>: <action> <run url>', trimmed to Synapse's length limit."""
     url = run_url() or "local run"
-    prefix = f"{date.today().isoformat()} {when}: "
+    # UTC, so local runs and GitHub Actions runs date snapshots the same way
+    prefix = f"{datetime.now(timezone.utc).date().isoformat()} {when}: "
     room = _MAX_COMMENT - len(prefix) - len(url) - 1
     return f"{prefix}{action[:max(room, 0)]} {url}"
 
