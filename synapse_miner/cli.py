@@ -441,6 +441,12 @@ def main() -> None:
 MAX_FILE_ATTEMPTS = 4
 
 
+def pmc_number(pmc_id):
+    """PMC13710763 -> 13710763 (0 if it isn't a PMC ID)."""
+    digits = str(pmc_id).upper().removeprefix("PMC")
+    return int(digits) if digits.isdigit() else 0
+
+
 def retry_list(failed_before, failed_now, missing, logger):
     """
     Files to retry next run, as {filename: runs it has failed in}.
@@ -564,6 +570,10 @@ def run_automated_workflow(args, logger):
         last_processed_pmc = tracker.extract_ending_pmc_id(last_processed_file) if last_processed_file else None
         if last_processed_file and not last_processed_pmc:
             logger.warning(f"Could not extract PMC ID from filename: {last_processed_file}")
+        if last_processed_pmc and last_pmc_id and pmc_number(last_processed_pmc) <= pmc_number(last_pmc_id):
+            # Safety net: the resume point only moves forward
+            logger.error(f"Not moving the resume point back from {last_pmc_id} to {last_processed_pmc}")
+            last_processed_pmc = None
         tracker.update_last_processed_pmc_id(last_processed_pmc, failed_files=failed_files)
         if failed_files:
             logger.warning(f"{len(failed_files)} files failed and will be retried next run: "

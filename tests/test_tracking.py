@@ -164,3 +164,31 @@ def test_process_http_files_retries_and_keeps_resume_point(tmp_path, monkeypatch
     assert last == "PMC201_PMC300.xml.gz"
     assert miner.failed_files == ["PMC301_PMC400.xml.gz"]
     assert miner.missing_retry_files == ["PMC9_PMC9.xml.gz"]
+
+
+def test_process_http_files_nothing_new_past_resume_point(tmp_path, monkeypatch):
+    """With no file past the resume point, only retries run: never the archive from the start."""
+    import urllib.request
+    from synapse_miner.core import SynapseMiner
+
+    names = ["PMC1_PMC100.xml.gz", "PMC101_PMC200.xml.gz"]
+    miner = SynapseMiner()
+    monkeypatch.setattr(miner, "_make_request",
+                        lambda url: "".join(f'<a href="{n}">{n}</a>' for n in names))
+    monkeypatch.setattr(miner, "_process_xml_file", lambda *a, **k: [])
+    order = []
+    monkeypatch.setattr(urllib.request, "urlretrieve",
+                        lambda url, path, reporthook=None: (order.append(url.rsplit("/", 1)[-1]),
+                                                            open(path, "wb").close()))
+    out = str(tmp_path / "out.csv")
+    assert miner.process_http_files("https://example.org/oa/", out, start_from="PMC201") is None
+    assert order == []
+    assert miner.process_http_files("https://example.org/oa/", out, start_from="PMC201",
+                                    retry_files=["PMC101_PMC200.xml.gz"]) is None
+    assert order == ["PMC101_PMC200.xml.gz"]
+
+
+def test_pmc_number():
+    from synapse_miner.cli import pmc_number
+    assert pmc_number("PMC13710763") == 13710763
+    assert pmc_number("junk") == 0

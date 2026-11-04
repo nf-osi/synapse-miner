@@ -410,7 +410,10 @@ class SynapseMiner:
                             logger.info(f"Starting from file: {file_urls[0]}")
                             break
                     else:
-                        logger.warning(f"Could not find file with PMC ID >= {start_pmc}")
+                        # Nothing past the resume point yet: no new files (never
+                        # fall back to the start of the archive)
+                        logger.info(f"No files with PMC ID >= {start_pmc} yet")
+                        file_urls = []
                 else:
                     # Try to extract simple PMC ID (format: PMC123456)
                     simple_pmc_match = re.search(r'PMC(\d+)', start_from)
@@ -423,7 +426,9 @@ class SynapseMiner:
                                 logger.info(f"Starting from file: {file_urls[0]} (start_pmc >= {start_pmc})")
                                 break
                         else:
-                            logger.warning(f"Could not find file with PMC ID >= {start_pmc}")
+                            # Nothing past the resume point yet: no new files
+                            logger.info(f"No files with PMC ID >= {start_pmc} yet")
+                            file_urls = []
                     else:
                         # Try exact filename match as fallback
                         try:
