@@ -295,3 +295,59 @@ def test_doi_stored_as_link():
 def test_journal_title_fallback(epmc, expected):
     from synapse_miner.utils.crossref_client import clean_journal_title
     assert clean_journal_title(epmc) == expected
+
+
+from synapse_miner.portal_tables import group_by_paper, plan_writes  # noqa: E402
+
+FIVE_STUDIES = {f"syn{i}": {"study_name": f"Study {i}", "funding_agency": [f"F{i}"], "disease_focus": [],
+                            "manifestation": []} for i in range(1000001, 1000008)}
+
+
+def test_one_row_per_paper_with_study_ids_in_study_name():
+    classified = pd.DataFrame([_row("syn4939902", "secondary"), _row("syn11638893", "secondary", confidence="medium")])
+    rows = build_cited_by(classified, STUDIES)
+    assert len(rows) == 1
+    row = rows.iloc[0]
+    assert row["studyId"] == ["syn4939902", "syn11638893"] == row["studyName"]
+    assert row["fundingAgency"] == ["NTAP", "NFRI"]
+    assert row["confidence"] == "medium"
+    assert row["evidence"].startswith("[syn4939902] ")
+
+
+def test_more_than_five_studies_split_into_rows():
+    classified = pd.DataFrame([{**_row("syn4939902", "secondary"), "study_id": s, "study_name": s}
+                               for s in FIVE_STUDIES])
+    rows = build_cited_by(classified, FIVE_STUDIES)
+    assert [len(ids) for ids in rows["studyId"]] == [5, 2]
+
+
+def _target(rows):
+    return pd.DataFrame(rows, columns=["ROW_ID", "pmid", "doi", "studyId", "studyName", "fundingAgency",
+                                       "publicationType"])
+
+
+def test_new_study_for_existing_paper_extends_its_row():
+    # CDK4/6 paper: already under JHU Biobank, now also primary for Hirbe's study
+    rows = build_primary(pd.DataFrame([_row("syn11638893", "primary")]), STUDIES)
+    target = _target([[245, "PMID:33591953", "https://doi.org/x", ["syn4939902"], ["The Johns Hopkins ..."],
+                       ["NTAP"], None]])
+    new, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=False)
+    assert new.empty
+    assert merges[245]["studyId"] == ["syn4939902", "syn11638893"]
+    assert merges[245]["added"] == ["syn11638893"]
+    assert merges[245]["fundingAgency"] == ["NTAP", "NFRI"]
+
+
+def test_study_already_linked_in_either_table_is_skipped():
+    rows = build_cited_by(pd.DataFrame([_row("syn4939902", "secondary")]), STUDIES)
+    in_publications = {("pmid:33591953", "syn4939902")}
+    new, merges = plan_writes(rows, _target([]), existing=in_publications, match_relationship=True)
+    assert new.empty and merges == {}
+
+
+def test_cited_by_only_merges_rows_with_the_same_relationship():
+    rows = build_cited_by(pd.DataFrame([_row("syn11638893", "mention")]), STUDIES)
+    target = _target([[3, "PMID:33591953", None, ["syn4939902"], ["syn4939902"], ["NTAP"], "secondary"]])
+    new, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=True)
+    assert merges == {}
+    assert new.iloc[0]["studyId"] == ["syn11638893"]

@@ -51,7 +51,9 @@ CITED_BY_SCHEMA = [
      "facetType": "enumeration"},
     {"name": "studyId", "columnType": "STRING_LIST", "maximumSize": 20, "maximumListLength": 5,
      "facetType": "enumeration"},
-    {"name": "studyName", "columnType": "STRING_LIST", "maximumSize": 200, "maximumListLength": 5,
+    # Study IDs, not names: as an entity-ID list the portal cards show each
+    # study's Synapse name linked to its project, as on dataset cards
+    {"name": "studyName", "columnType": "ENTITYID_LIST", "maximumListLength": 5,
      "facetType": "enumeration"},
     {"name": "publicationType", "columnType": "STRING", "maximumSize": 20, "facetType": "enumeration"},
     {"name": "pmcid", "columnType": "STRING", "maximumSize": 20},
@@ -88,7 +90,7 @@ def _fit_list(name: str, values: Iterable[str]) -> List[str]:
     with a warning. Free text (author, studyName) is shortened.
     """
     spec = _LIMITS[name]
-    size = spec["maximumSize"]
+    size = spec.get("maximumSize") or 1000
     items = []
     for value in values:
         if _missing(value) or not str(value).strip():
@@ -163,7 +165,7 @@ def build_rows(classified: pd.DataFrame, studies: Dict[str, Dict], relationships
             "manifestation": _fit_list("manifestation", study.get("manifestation", [])),
             "fundingAgency": _fit_list("fundingAgency", study.get("funding_agency", [])),
             "studyId": [row.study_id],
-            "studyName": _fit_list("studyName", [row.study_name]),
+            "studyName": [row.study_id],
             "publicationType": row.relationship,
             "pmcid": _fit("pmcid", row.pmcid),
             "isPreprint": bool(row.is_preprint) if not _missing(row.is_preprint) else False,
@@ -177,13 +179,151 @@ def build_rows(classified: pd.DataFrame, studies: Dict[str, Dict], relationships
 
 
 def build_cited_by(classified: pd.DataFrame, studies: Dict[str, Dict]) -> pd.DataFrame:
-    """Cited By rows: secondary, review and mention pairs at any confidence."""
-    return build_rows(classified, studies, CITED_BY_RELATIONSHIPS)
+    """Cited By rows: secondary, review and mention pairs at any confidence, one row per paper and relationship."""
+    return group_by_paper(build_rows(classified, studies, CITED_BY_RELATIONSHIPS))
 
 
 def build_primary(classified: pd.DataFrame, studies: Dict[str, Dict]) -> pd.DataFrame:
-    """Publications-table rows: primary pairs with high or medium confidence."""
-    return build_rows(classified, studies, PRIMARY_RELATIONSHIPS, PRIMARY_CONFIDENCE)
+    """Publications-table rows: primary pairs with high or medium confidence, one row per paper."""
+    return group_by_paper(build_rows(classified, studies, PRIMARY_RELATIONSHIPS, PRIMARY_CONFIDENCE))
+
+
+def paper_key(pmid, doi, pmcid=None) -> str:
+    """One key per paper: its PMID, else its DOI, else its PMCID."""
+    pmid = _pmid_digits(pmid)
+    if pmid:
+        return f"pmid:{pmid}"
+    doi = _doi_key(doi)
+    if doi:
+        return f"doi:{doi}"
+    return f"pmcid:{pmcid}" if not _missing(pmcid) else ""
+
+
+def _union(lists: Iterable[List[str]], limit: int) -> List[str]:
+    out = []
+    for values in lists:
+        for value in values:
+            if value not in out:
+                out.append(value)
+    return out[:limit]
+
+
+def group_by_paper(rows: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge per-study rows into one row per paper and relationship.
+
+    Studies, manifestations, funders and cited Synapse IDs are combined;
+    confidence is the lowest of the merged pairs, and evidence keeps each
+    study's sentences, prefixed with the study ID. A paper with more than
+    5 studies (the studyId limit) gets more than one row.
+    """
+    if rows.empty:
+        return rows
+    keys = [paper_key(r.pmid, r.doi, r.pmcid) for r in rows.itertuples(index=False)]
+    out = []
+    for (_, relationship), group in rows.assign(_paper=keys).groupby(["_paper", "publicationType"], sort=False):
+        studies = _union(group["studyId"], 1000)
+        for start in range(0, len(studies), _LIMITS["studyId"]["maximumListLength"]):
+            chunk = studies[start:start + _LIMITS["studyId"]["maximumListLength"]]
+            part = group[group["studyId"].map(lambda ids: ids[0] in chunk)]
+            first = part.iloc[0].to_dict()
+            confidences = [c for c in part["confidence"] if not _missing(c)]
+            evidence = [f"[{r.studyId[0]}] {r.evidence}" for r in part.itertuples(index=False)
+                        if not _missing(r.evidence)]
+            first.update({
+                "studyId": chunk,
+                "studyName": chunk,
+                "manifestation": _union(part["manifestation"], _LIMITS["manifestation"]["maximumListLength"]),
+                "fundingAgency": _union(part["fundingAgency"], _LIMITS["fundingAgency"]["maximumListLength"]),
+                "citedSynapseIds": _union(part["citedSynapseIds"], _LIMITS["citedSynapseIds"]["maximumListLength"]),
+                "confidence": min(confidences, key=lambda c: _CONFIDENCE_ORDER.get(c, -1)) if confidences else None,
+                "evidence": "\n".join(evidence) or None,
+            })
+            first.pop("_paper", None)
+            out.append(first)
+    df = pd.DataFrame(out, columns=CITED_BY_COLUMNS)
+    df["year"] = df["year"].astype("Int64")
+    return df
+
+
+def load_table_rows(syn, table_id: str) -> pd.DataFrame:
+    """Existing rows of a portal publication table, with ROW_ID and the columns used for merging."""
+    columns = ["pmid", "doi", "studyId", "studyName", "fundingAgency"]
+    has_type = any(c["name"] == "publicationType" for c in syn.getTableColumns(table_id))
+    if has_type:
+        columns.append("publicationType")
+    df = syn.tableQuery(f"SELECT {', '.join(columns)} FROM {table_id}").asDataFrame(rowIdAndVersionInIndex=False)
+    for column in ("studyId", "studyName", "fundingAgency"):
+        df[column] = df[column].map(_as_list)
+    return df
+
+
+def plan_writes(rows: pd.DataFrame, target: pd.DataFrame, existing: Set[Tuple[str, str]],
+                match_relationship: bool) -> Tuple[pd.DataFrame, Dict[int, Dict]]:
+    """
+    Decide how new rows reach a table without duplicating a paper.
+
+    A study already linked to the paper in either table (`existing`) is
+    dropped. Remaining studies are added to the paper's existing row in the
+    target table when there is one (with the same relationship in Cited By)
+    and it has room; otherwise they become a new row.
+
+    Returns:
+        (rows to append, {ROW_ID: {"studyId", "studyName", "fundingAgency", "added"}}
+         for existing rows that gain studies)
+    """
+    by_paper: Dict[Tuple[str, str], List] = {}
+    for row in target.itertuples(index=False):
+        key = paper_key(row.pmid, row.doi)
+        relationship = getattr(row, "publicationType", "") if match_relationship else ""
+        by_paper.setdefault((key, relationship or ""), []).append(row)
+    limit = _LIMITS["studyId"]["maximumListLength"]
+    new_rows, merges = [], {}
+    for row in rows.itertuples(index=False):
+        key = paper_key(row.pmid, row.doi, row.pmcid)
+        ids = {f"pmid:{_pmid_digits(row.pmid)}", f"doi:{_doi_key(row.doi)}"}
+        studies = [s for s in row.studyId if not any((i, s) in existing for i in ids)]
+        if not studies:
+            continue
+        relationship = row.publicationType if match_relationship else ""
+        for current in by_paper.get((key, relationship), []):
+            row_id = int(current.ROW_ID)
+            merged = merges.get(row_id, {"studyId": list(current.studyId), "studyName": list(current.studyName),
+                                         "fundingAgency": list(current.fundingAgency), "added": []})
+            room = limit - len(merged["studyId"])
+            take = studies[:room]
+            if take:
+                merged["studyId"] += take
+                merged["studyName"] += take
+                merged["fundingAgency"] = _union([merged["fundingAgency"], row.fundingAgency],
+                                                  _LIMITS["fundingAgency"]["maximumListLength"])
+                merged["added"] += take
+                merges[row_id] = merged
+                studies = studies[len(take):]
+            if not studies:
+                break
+        if studies:
+            new = row._asdict()
+            new.update({"studyId": studies, "studyName": list(studies)})
+            new_rows.append(new)
+    new_df = pd.DataFrame(new_rows, columns=CITED_BY_COLUMNS)
+    if not new_df.empty:
+        new_df["year"] = new_df["year"].astype("Int64")
+    return new_df, merges
+
+
+def apply_merges(syn, table_id: str, merges: Dict[int, Dict], action: str) -> int:
+    """Add studies to existing rows (studyId, studyName, fundingAgency only), snapshotted. Returns rows changed."""
+    if not merges:
+        return 0
+    from synapseclient import PartialRowset
+    changes = {row_id: {k: v for k, v in m.items() if k != "added"} for row_id, m in merges.items()}
+    ids = ",".join(str(i) for i in changes)
+    with snapshots_around(syn, table_id, action):
+        fresh = syn.tableQuery(f"SELECT studyId, studyName, fundingAgency FROM {table_id} WHERE ROW_ID IN ({ids})")
+        syn.store(PartialRowset.from_mapping(changes, fresh))
+    logger.info(f"Added studies to {len(changes)} existing rows in {table_id}")
+    return len(changes)
 
 
 def _pmid_digits(value) -> str:
@@ -391,7 +531,8 @@ def _paper_link(pmid: str, title: str) -> str:
 def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dict]] = None,
                  to_remove: Optional[List[Dict]] = None,
                  left_out: Optional[pd.DataFrame] = None,
-                 left_out_total: Optional[int] = None) -> Optional[Tuple[str, str]]:
+                 left_out_total: Optional[int] = None,
+                 merged: Optional[Dict[str, Dict[int, Dict]]] = None) -> Optional[Tuple[str, str]]:
     """
     Title and Markdown body for an issue listing this run's changes, or None
     when the run changed nothing.
@@ -404,15 +545,19 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
             been reported in an earlier issue
         left_out_total: all low-confidence pairs currently left out, including
             ones reported before (defaults to len(left_out))
+        merged: table ID -> {ROW_ID: change} for existing rows that gained studies
     """
     replaced, to_remove = replaced or [], to_remove or []
     left_out = left_out if left_out is not None else pd.DataFrame()
+    merged = {t: m for t, m in (merged or {}).items() if m}
+    n_merged = sum(len(m) for m in merged.values())
     total = sum(len(df) for df in additions.values())
-    if not (total or replaced or to_remove or not left_out.empty):
+    if not (total or n_merged or replaced or to_remove or not left_out.empty):
         return None
     left_out_total = len(left_out) if left_out_total is None else left_out_total
     url = run_url()
     summary = ([f"{total} rows added"] if total else []) \
+              + ([f"{n_merged} existing rows linked to more studies"] if n_merged else []) \
               + ([f"{len(replaced)} preprints replaced by their published versions"] if replaced else []) \
               + ([f"{len(to_remove)} preprint rows to remove by hand"] if to_remove else []) \
               + ([f"{len(left_out)} new low-confidence pairs not added"] if not left_out.empty else [])
@@ -443,7 +588,15 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
             evidence = str(row.evidence or "").split("\n")[0][:200].replace("|", "/")
             preprint = " (preprint)" if row.isPreprint else ""
             lines.append(f"| {row.confidence} | {row.publicationType} | [{title}]({link}) {paper_id}{preprint} "
-                         f"| {row.studyId[0]} {row.studyName[0][:60] if row.studyName else ''} | {evidence} |")
+                         f"| {', '.join(row.studyId)} | {evidence} |")
+        lines.append("")
+    for table_id, changes in merged.items():
+        lines += [f"### Studies added to existing rows in [{table_id}](https://www.synapse.org/Synapse:{table_id}/tables/) "
+                  f"({len(changes)} rows)", "",
+                  "These papers were already in the table, so their new studies were added to the existing row "
+                  "instead of a new one.", "",
+                  "| ROW_ID | Studies added | Studies now |", "|---|---|---|"]
+        lines += [f"| {row_id} | {', '.join(c['added'])} | {', '.join(c['studyId'])} |" for row_id, c in changes.items()]
         lines.append("")
     if replaced:
         lines += [f"### Preprints replaced by their published versions ({len(replaced)})", "",
@@ -477,7 +630,7 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
                          f"| {str(row.reason).replace('|', '/')} | {evidence} |")
         lines += ["", "</details>", ""]
     title = (f"Review publication table changes ({pd.Timestamp.today().date().isoformat()})"
-             if (total or replaced or to_remove) else
+             if (total or n_merged or replaced or to_remove) else
              f"Review {len(left_out)} low-confidence publication pairs ({pd.Timestamp.today().date().isoformat()})")
     body = "\n".join(lines)
     if len(body) > _MAX_ISSUE_BODY:

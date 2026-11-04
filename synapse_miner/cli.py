@@ -640,9 +640,9 @@ def run_classify_workflow(args, logger):
     """Classify mined papers by how they relate to NF Data Portal studies."""
     import os
     from synapse_miner.portal_tables import (
-        CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, build_cited_by, build_primary,
-        create_cited_by_table, drop_existing_pairs, left_out_key, load_pair_keys, load_reported,
-        not_added, review_issue, save_reported, update_preprint_rows,
+        CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, apply_merges, build_cited_by, build_primary,
+        create_cited_by_table, left_out_key, load_pair_keys, load_reported, load_table_rows,
+        not_added, plan_writes, review_issue, save_reported, update_preprint_rows,
     )
     from synapse_miner.classify import classify_publications
     from synapse_miner.utils.europepmc_client import EuropePMCClient
@@ -686,7 +686,7 @@ def run_classify_workflow(args, logger):
     cited_by_table = args.cited_by_table
     if not (cited_by_table or args.create_cited_by_table_in or args.add_primary_publications):
         return
-    additions, replaced, to_remove, failed = {}, [], [], False
+    additions, merged, replaced, to_remove, failed = {}, {}, [], [], False
     existing = set()
     try:
         if args.create_cited_by_table_in:
@@ -703,16 +703,19 @@ def run_classify_workflow(args, logger):
         existing = load_pair_keys(syn, args.publications_table)
         if cited_by_table:
             existing |= load_pair_keys(syn, cited_by_table)
+        # One row per paper: new studies for a paper already in a table are
+        # added to its existing row rather than to a new row
+        targets = []
         if args.add_primary_publications:
-            new_primary = drop_existing_pairs(primary, existing)
-            append_rows(syn, args.publications_table, new_primary, PUBLICATION_COLUMNS,
-                        f"classify adds {len(new_primary)} primary publication rows")
-            additions[args.publications_table] = new_primary
+            targets.append((args.publications_table, primary, PUBLICATION_COLUMNS, False, "primary publication"))
         if cited_by_table:
-            new_cited_by = drop_existing_pairs(cited_by, existing)
-            append_rows(syn, cited_by_table, new_cited_by, CITED_BY_COLUMNS,
-                        f"classify adds {len(new_cited_by)} Cited By rows")
-            additions[cited_by_table] = new_cited_by
+            targets.append((cited_by_table, cited_by, CITED_BY_COLUMNS, True, "Cited By"))
+        for table_id, rows, columns, match_relationship, label in targets:
+            new_rows, merges = plan_writes(rows, load_table_rows(syn, table_id), existing, match_relationship)
+            apply_merges(syn, table_id, merges, f"classify links {len(merges)} existing {label} rows to more studies")
+            merged[table_id] = merges
+            append_rows(syn, table_id, new_rows, columns, f"classify adds {len(new_rows)} {label} rows")
+            additions[table_id] = new_rows
     except Exception as e:
         logger.error(f"Failed to update the portal publication tables: {e}")
         failed = True
@@ -723,7 +726,7 @@ def run_classify_workflow(args, logger):
     left_out_keys = {left_out_key(row) for row in left_out.itertuples(index=False)}
     reported = load_reported(args.reported_file)
     new_left_out = left_out[[left_out_key(row) not in reported for row in left_out.itertuples(index=False)]]
-    issue = review_issue(additions, replaced, to_remove, new_left_out, left_out_total=len(left_out))
+    issue = review_issue(additions, replaced, to_remove, new_left_out, left_out_total=len(left_out), merged=merged)
     if issue and args.review_issue_output:
         title, body = issue
         with open(args.review_issue_output, "w") as f:
