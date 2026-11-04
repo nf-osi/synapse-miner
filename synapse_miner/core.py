@@ -336,7 +336,8 @@ class SynapseMiner:
         
     def process_http_files(self, base_url: str, output_path: str, 
                          start_from: Optional[str] = None, 
-                         max_files: Optional[int] = None) -> Optional[str]:
+                         max_files: Optional[int] = None,
+                         retry_files: Optional[List[str]] = None) -> Optional[str]:
         """
         Process XML files from an HTTP server.
 
@@ -345,14 +346,24 @@ class SynapseMiner:
             output_path: Path to save results
             start_from: Filename to start processing from
             max_files: Maximum number of files to process
+            retry_files: Filenames that failed in earlier runs, processed
+                before the new files (not counted against max_files)
 
         Returns:
-            Filename of the last file processed successfully (whether or not it
-            contained any Synapse IDs), or None if no file was processed
+            Filename of the last new file processed successfully (whether or
+            not it contained any Synapse IDs), or None if no new file was
+            processed. Retried files never count here, so the resume point
+            only moves forward.
+
+        After the call, self.failed_files lists the files (new or retried)
+        that could not be downloaded or processed, and
+        self.missing_retry_files the retry files no longer in the listing.
         """
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
         last_processed_file = None
+        self.failed_files = []
+        self.missing_retry_files = []
         
         try:
             # Get directory listing
@@ -399,7 +410,10 @@ class SynapseMiner:
                             logger.info(f"Starting from file: {file_urls[0]}")
                             break
                     else:
-                        logger.warning(f"Could not find file with PMC ID >= {start_pmc}")
+                        # Nothing past the resume point yet: no new files (never
+                        # fall back to the start of the archive)
+                        logger.info(f"No files with PMC ID >= {start_pmc} yet")
+                        file_urls = []
                 else:
                     # Try to extract simple PMC ID (format: PMC123456)
                     simple_pmc_match = re.search(r'PMC(\d+)', start_from)
@@ -412,7 +426,9 @@ class SynapseMiner:
                                 logger.info(f"Starting from file: {file_urls[0]} (start_pmc >= {start_pmc})")
                                 break
                         else:
-                            logger.warning(f"Could not find file with PMC ID >= {start_pmc}")
+                            # Nothing past the resume point yet: no new files
+                            logger.info(f"No files with PMC ID >= {start_pmc} yet")
+                            file_urls = []
                     else:
                         # Try exact filename match as fallback
                         try:
@@ -426,6 +442,21 @@ class SynapseMiner:
             # Limit number of files
             if max_files:
                 file_urls = file_urls[:max_files]
+
+            # Earlier failures go first; they are retried, not resumed past
+            retry_urls = []
+            if retry_files:
+                by_name = {e['filename']: e['url'] for e in file_entries}
+                for name in retry_files:
+                    if name not in by_name:
+                        self.missing_retry_files.append(name)
+                    elif by_name[name] not in file_urls:
+                        retry_urls.append(by_name[name])
+                if retry_urls:
+                    logger.info(f"Retrying {len(retry_urls)} files that failed in earlier runs")
+                if self.missing_retry_files:
+                    logger.warning(f"Files to retry no longer in the listing: {self.missing_retry_files}")
+            file_urls = retry_urls + file_urls
                 
             # Process files
             all_findings = []
@@ -493,13 +524,15 @@ class SynapseMiner:
                         # Remove downloaded file
                         os.remove(local_path)
                         logger.info(f"Removed downloaded file: {local_path}")
-                        last_processed_file = os.path.basename(file_url)
+                        if file_url not in retry_urls:
+                            last_processed_file = os.path.basename(file_url)
 
                         # Update progress with number of Synapse IDs found
                         progress.update(task, 
                                      description=f"Processing files (found {len(all_findings)} Synapse IDs)")
                     except Exception as e:
                         logger.error(f"Error processing {file_url}: {e}")
+                        self.failed_files.append(os.path.basename(file_url))
                         continue
                     
             # Final save of all results
