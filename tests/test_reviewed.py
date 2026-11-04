@@ -71,12 +71,21 @@ def test_plan_replacements_overwrites_paper_columns_only():
     pairs = reviewed_pairs(decisions, {"1": _meta("1", "PMC1")}, {}, "Reviewed in https://x/1")
     target = pd.DataFrame([{"ROW_ID": 431, "pmid": "PMID:", "doi": "10.7937/TCIA.X", "studyId": ["syn10"]},
                            {"ROW_ID": 5, "pmid": "PMID:9", "doi": None, "studyId": ["syn99"]}])
-    changes = plan_replacements(pairs, {"syn10": {}}, ["primary"], target, set(), PAPER_COLUMNS)
+    funded = {"syn10": {"funding_agency": ["Wellcome Trust", "EPSRC"]}}
+    changes = plan_replacements(pairs, funded, ["primary"], target, set(), PAPER_COLUMNS)
     assert set(changes) == {431}
+    # Funders come from the study, not the row (which may hold the column default)
+    assert changes[431]["fundingAgency"] == ["Wellcome Trust", "EPSRC"]
     assert changes[431]["pmid"] == "PMID:1"
     assert changes[431]["doi"] == "https://doi.org/10.1/1"
     assert changes[431]["year"] == 2025 and type(changes[431]["year"]) is int
-    assert "studyId" not in changes[431] and "fundingAgency" not in changes[431]
+    assert "studyId" not in changes[431]
+    # A study with no funders leaves the row's funders alone
+    assert "fundingAgency" not in plan_replacements(pairs, {"syn10": {}}, ["primary"], target, set(),
+                                                    PAPER_COLUMNS)[431]
+    # Replacing a row with the paper it already holds refreshes it
+    holding = target.assign(pmid=["PMID:1", "PMID:9"])
+    assert set(plan_replacements(pairs, funded, ["primary"], holding, {("pmid:1", "syn10")}, PAPER_COLUMNS)) == {431}
     # Only a row already linked to the study can be replaced
     wrong = [Decision("1", "syn10", "primary", 5)]
     with pytest.raises(ValueError, match="not linked"):

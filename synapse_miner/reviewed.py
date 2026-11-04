@@ -9,8 +9,9 @@ issue. A reviewer answers with one decision per line, e.g.
 
 and `synapse-miner add-reviewed` turns those lines into rows. A line ending in
 "replaces row 431" fixes that existing row in place instead (e.g. a
-placeholder row holding a dataset DOI): its paper columns are overwritten and
-its study, disease, manifestation and funder columns are kept: metadata from
+placeholder row holding a dataset DOI): its paper columns are overwritten,
+fundingAgency is set to its studies' funders (as for new rows), and its study,
+disease and manifestation columns are kept: metadata from
 Europe PMC (journal names from Crossref), study details from the studies view,
 the Synapse IDs the paper cites from the mined-mentions table. Rows are written
 like the workflow's own: primary pairs to the publications table, secondary /
@@ -28,7 +29,7 @@ import pandas as pd
 from .portal_tables import (
     CITED_BY_COLUMNS, CITED_BY_RELATIONSHIPS, PRIMARY_RELATIONSHIPS, PUBLICATION_COLUMNS,
     append_rows, apply_merges, build_rows, group_by_paper, load_pair_keys, load_table_rows,
-    plan_writes, _as_list, _doi_key, _pmid_digits,
+    plan_writes, _as_list, _doi_key, _fit_list, _pmid_digits,
 )
 from .utils.synapse_safety import snapshots_around
 from .utils.crossref_client import clean_journal_title
@@ -47,8 +48,8 @@ _DECISION = re.compile(
 )
 _REPLACES = re.compile(r"\breplac\w*\s+(?:ROW_?ID|row)?\s*#?\s*(\d+)\b", re.IGNORECASE)
 
-# Columns a "replaces row N" decision overwrites; study, disease, manifestation
-# and funder columns of the row are kept
+# Columns a "replaces row N" decision overwrites (plus fundingAgency, from the
+# row's studies); study, disease and manifestation columns of the row are kept
 PAPER_COLUMNS = ["doi", "journal", "title", "year", "pmid", "author", "publicationType"]
 CITED_BY_PAPER_COLUMNS = PAPER_COLUMNS + ["pmcid", "isPreprint", "confidence", "citedSynapseIds", "evidence"]
 
@@ -192,7 +193,10 @@ def plan_replacements(pairs: pd.DataFrame, studies: Dict[str, Dict], relationshi
     {ROW_ID: {column: new value}} for decisions that replace an existing row.
 
     The row must already be linked to the decision's study, and the paper must
-    not already be linked to that study elsewhere (that would duplicate it).
+    not already be linked to that study in another row (that would duplicate
+    it); replacing a row with the paper it already holds refreshes it.
+    fundingAgency becomes the funders of the row's studies, unless none of
+    them has any.
     """
     if pairs.empty:
         return {}
@@ -207,9 +211,16 @@ def plan_replacements(pairs: pd.DataFrame, studies: Dict[str, Dict], relationshi
         if decision.study_id not in _as_list(current.iloc[0]["studyId"]):
             raise ValueError(f"ROW_ID {row_id} is not linked to {decision.study_id}; not replacing it")
         ids = {f"pmid:{_pmid_digits(row.pmid)}", f"doi:{_doi_key(row.doi)}"}
-        if any((i, decision.study_id) in existing for i in ids):
+        current_ids = {f"pmid:{_pmid_digits(current.iloc[0].get('pmid'))}",
+                       f"doi:{_doi_key(current.iloc[0].get('doi'))}"} - {"pmid:", "doi:"}
+        if not (ids & current_ids) and any((i, decision.study_id) in existing for i in ids):
             raise ValueError(f"PMID {decision.pmid} is already linked to {decision.study_id}")
         changes[row_id] = {c: _plain(getattr(row, c)) for c in columns}
+        funders = []
+        for study in _as_list(current.iloc[0]["studyId"]):
+            funders += [f for f in studies.get(study, {}).get("funding_agency", []) if f not in funders]
+        if funders:
+            changes[row_id]["fundingAgency"] = _fit_list("fundingAgency", funders)
     return changes
 
 
