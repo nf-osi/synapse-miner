@@ -56,3 +56,32 @@ def test_reviewed_pairs_needs_metadata():
     import pytest
     with pytest.raises(ValueError, match="PMID 9"):
         reviewed_pairs([Decision("9", "syn1", "primary")], {}, {}, "x")
+
+
+def test_parse_replaces_row():
+    assert parse_decisions("PMID:34711849 (syn74287631): primary, replaces row 431") == [
+        Decision("34711849", "syn74287631", "primary", 431)]
+    assert parse_decisions("PMID:34711849 syn74287631 primary replace ROW_ID 431")[0].replace_row == 431
+
+
+def test_plan_replacements_overwrites_paper_columns_only():
+    import pytest
+    from synapse_miner.reviewed import PAPER_COLUMNS, plan_replacements
+    decisions = [Decision("1", "syn10", "primary", 431)]
+    pairs = reviewed_pairs(decisions, {"1": _meta("1", "PMC1")}, {}, "Reviewed in https://x/1")
+    target = pd.DataFrame([{"ROW_ID": 431, "pmid": "PMID:", "doi": "10.7937/TCIA.X", "studyId": ["syn10"]},
+                           {"ROW_ID": 5, "pmid": "PMID:9", "doi": None, "studyId": ["syn99"]}])
+    changes = plan_replacements(pairs, {"syn10": {}}, ["primary"], target, set(), PAPER_COLUMNS)
+    assert set(changes) == {431}
+    assert changes[431]["pmid"] == "PMID:1"
+    assert changes[431]["doi"] == "https://doi.org/10.1/1"
+    assert changes[431]["year"] == 2025 and type(changes[431]["year"]) is int
+    assert "studyId" not in changes[431] and "fundingAgency" not in changes[431]
+    # Only a row already linked to the study can be replaced
+    wrong = [Decision("1", "syn10", "primary", 5)]
+    with pytest.raises(ValueError, match="not linked"):
+        plan_replacements(reviewed_pairs(wrong, {"1": _meta("1", "PMC1")}, {}, "x"), {"syn10": {}},
+                          ["primary"], target, set(), PAPER_COLUMNS)
+    # Nor one whose paper is already linked to the study
+    with pytest.raises(ValueError, match="already linked"):
+        plan_replacements(pairs, {"syn10": {}}, ["primary"], target, {("pmid:1", "syn10")}, PAPER_COLUMNS)

@@ -14,6 +14,8 @@ PMID:40744913 (FGFR glioma, syn5698493): secondary
 
 Relationships: `primary` goes to the publications table (syn16857542); `secondary`, `review` and `mention` go to Cited By (syn78484103).
 
+To **fix an existing row** rather than add one, end the line with `replaces row <ROW_ID>`, e.g. `PMID:34711849 (syn74287631): primary, replaces row 431`. Use this for placeholder rows: no PMID, a dataset DOI, the study name as title, or author "Unknown". Find the ROW_ID with `SELECT * FROM syn16857542 WHERE studyId HAS ('<study>')`. Only the paper columns change; the row must already be linked to the study.
+
 ## Steps
 
 1. **Get the decisions.** Read the reply with `gh api repos/nf-osi/synapse-miner/issues/comments/<id> --jq .body` and save it to a scratch file. Confirm every line parsed. The command logs one `Decision:` line per pair, and a line it can't parse is silently skipped.
