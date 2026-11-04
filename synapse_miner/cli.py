@@ -321,6 +321,40 @@ def main() -> None:
             help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
 
+    # Add pairs a person reviewed (e.g. from a review issue)
+    if SYNAPSE_AVAILABLE:
+        reviewed_parser = subparsers.add_parser(
+            "add-reviewed",
+            help="Add reviewed paper-study pairs (e.g. answers to a review issue) to the portal tables"
+        )
+        reviewed_parser.add_argument(
+            "decisions",
+            help="File with one decision per line, e.g. 'PMID:40585258 (syn51115812): primary' "
+                 "('-' reads stdin). Relationships: primary, secondary, review, mention"
+        )
+        reviewed_parser.add_argument(
+            "--evidence", required=True,
+            help="Where the review happened (e.g. the issue comment URL); stored in the evidence column"
+        )
+        reviewed_parser.add_argument(
+            "--dry-run", action="store_true",
+            help="Show the rows that would be written without writing"
+        )
+        reviewed_parser.add_argument("--table-id", default="syn66047339",
+                                     help="Synapse table of mined mentions (default: syn66047339)")
+        reviewed_parser.add_argument("--studies-view", default="syn52677631",
+                                     help="Portal studies view (default: syn52677631)")
+        reviewed_parser.add_argument("--publications-table", default="syn16857542",
+                                     help="Portal publications table for primary pairs (default: syn16857542)")
+        reviewed_parser.add_argument("--cited-by-table", default="syn78484103",
+                                     help="Portal Cited By table for other pairs (default: syn78484103)")
+        reviewed_parser.add_argument("--cache-dir", default=".cache",
+                                     help="Cache directory for API responses (default: .cache)")
+        reviewed_parser.add_argument(
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
+        )
+
     # Search beyond the Europe PMC open-access download
     if SYNAPSE_AVAILABLE:
         search_parser = subparsers.add_parser(
@@ -428,6 +462,9 @@ def main() -> None:
 
         elif args.command == "search" and SYNAPSE_AVAILABLE:
             run_search_workflow(args, logger)
+
+        elif args.command == "add-reviewed" and SYNAPSE_AVAILABLE:
+            run_add_reviewed(args, logger)
 
         else:
             parser.print_help()
@@ -679,6 +716,37 @@ def run_ebisearch_workflow(args, logger):
         db_description=args.db_description,
     )
     logger.info(f"Done — EBI Search XML written to {output_path}")
+
+
+def run_add_reviewed(args, logger):
+    """Add reviewed paper-study pairs to the portal tables."""
+    import os
+    from synapse_miner.reviewed import add_reviewed, describe, parse_decisions
+    from synapse_miner.utils.crossref_client import CrossrefClient
+    from synapse_miner.utils.europepmc_client import EuropePMCClient
+    from synapse_miner.utils.study_resolver import load_studies
+
+    text = sys.stdin.read() if args.decisions == "-" else open(args.decisions).read()
+    decisions = parse_decisions(text)
+    if not decisions:
+        logger.error("No decisions found (expected lines like 'PMID:40585258 (syn51115812): primary')")
+        sys.exit(1)
+    for d in decisions:
+        logger.info(f"Decision: PMID {d.pmid} {d.study_id} {d.relationship}")
+
+    token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+    syn = SynapseUploader(pat=token).syn
+    plan = add_reviewed(
+        syn, decisions, args.evidence,
+        epmc=EuropePMCClient(cache_dir=os.path.join(args.cache_dir, "europepmc")),
+        studies=load_studies(syn, args.studies_view),
+        publications_table=args.publications_table, cited_by_table=args.cited_by_table,
+        mentions_table=args.table_id,
+        crossref=CrossrefClient(cache_path=os.path.join(args.cache_dir, "crossref.json")),
+        dry_run=args.dry_run,
+    )
+    print(describe(plan))
+    logger.info("Dry run: nothing written" if args.dry_run else "Reviewed pairs written")
 
 
 def run_classify_workflow(args, logger):

@@ -565,7 +565,7 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
         f"This run of the NF Data Portal publication pipeline: {', '.join(summary)}. "
         + ("Please check the additions, especially the lower-confidence rows at the top of each table, "
            "and fix or remove any that are wrong. " if total else "")
-        + ("Add any left-out pairs that belong by hand." if not left_out.empty else ""),
+        + ("Add any left-out pairs that belong as described below." if not left_out.empty else ""),
         "",
         "- **primary** rows go to the publications table: the paper generated or deposited the study's data.",
         "- **secondary / review / mention** rows go to the Cited By table: the paper reused, "
@@ -616,7 +616,9 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
         earlier = left_out_total - len(left_out)
         lines += [f"### Not added: {len(left_out)} new low-confidence pairs", "",
                   "These were left out of both tables (unclear, or primary with low confidence). "
-                  "Add any that belong by hand."
+                  "To add any that belong, reply with one line per pair, e.g. "
+                  "`PMID:40585258 (syn51115812): primary` (or secondary, review, mention), then run the "
+                  "**Add reviewed publications** workflow with the reply's link."
                   + (f" {earlier} more were reported in earlier issues and are still left out; all "
                      f"{left_out_total} are in the run's `classified_publications.csv`." if earlier > 0 else ""),
                   "", "<details><summary>Show them</summary>", "",

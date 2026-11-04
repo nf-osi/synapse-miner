@@ -1,0 +1,75 @@
+name: Add reviewed publications
+
+# Adds paper-study pairs a person reviewed (usually answers to a
+# publication-review issue) to the NF Data Portal publication tables.
+# The reply should have one line per pair, e.g.
+#   PMID:40585258 (syn51115812): primary
+# with primary, secondary, review or mention.
+
+on:
+  workflow_dispatch:
+    inputs:
+      comment_url:
+        description: 'Link to the issue comment with the decisions (…/issues/N#issuecomment-ID)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Only show what would be added'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write   # reply on the issue with what was added
+
+jobs:
+  add-reviewed:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+
+    - name: Fetch the decisions
+      id: comment
+      env:
+        GH_TOKEN: ${{ github.token }}
+        COMMENT_URL: ${{ inputs.comment_url }}
+      run: |
+        comment_id=$(echo "$COMMENT_URL" | grep -oE 'issuecomment-[0-9]+' | cut -d- -f2)
+        issue=$(echo "$COMMENT_URL" | grep -oE '/issues/[0-9]+' | cut -d/ -f3)
+        if [ -z "$comment_id" ] || [ -z "$issue" ]; then
+          echo "::error::Expected a link like https://github.com/${{ github.repository }}/issues/21#issuecomment-123"
+          exit 1
+        fi
+        gh api "repos/${{ github.repository }}/issues/comments/$comment_id" --jq .body > decisions.txt
+        echo "issue=$issue" >> "$GITHUB_OUTPUT"
+        cat decisions.txt
+
+    - name: Add the reviewed pairs
+      env:
+        SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
+        COMMENT_URL: ${{ inputs.comment_url }}
+      run: |
+        synapse-miner add-reviewed decisions.txt \
+          --synapse-pat "$SYNAPSE_PAT" \
+          --evidence "Reviewed in $COMMENT_URL" \
+          ${{ inputs.dry_run && '--dry-run' || '' }} | tee summary.txt
+
+    - name: Reply on the issue
+      if: ${{ !inputs.dry_run }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        { echo "Added the reviewed pairs from ${{ inputs.comment_url }} ([run]($RUN_URL)):"; echo; echo '```'; cat summary.txt; echo '```'; } > reply.md
+        gh issue comment "${{ steps.comment.outputs.issue }}" --body-file reply.md

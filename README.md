@@ -156,6 +156,35 @@ synapse-miner classify \
 
 Without `--cited-by-table` or `--add-primary-publications`, `classify` only writes CSVs (`classified_publications.csv`, `primary_publications.csv`, `cited_by.csv`).
 
+#### Adding reviewed pairs (`synapse-miner add-reviewed`)
+
+The review issue lists low-confidence pairs the workflow left out. To add the ones that belong, reply on the issue with one line per pair:
+
+```
+PMID:40585258 (liquid biopsy, syn51115812): primary
+PMID:40744913 (FGFR glioma, syn5698493): secondary
+```
+
+The relationship is `primary`, `secondary`, `review` or `mention`; anything else on the line is ignored. Then run the **Add reviewed publications** workflow (Actions tab, `add-reviewed.yml`) with the reply's link. Tick `dry_run` first to see the rows without writing. The workflow replies on the issue with what it added.
+
+Or run it locally (needs write access to both tables):
+
+```bash
+synapse-miner add-reviewed decisions.txt \
+  --evidence "Reviewed in https://github.com/nf-osi/synapse-miner/issues/21#issuecomment-6644387488" \
+  --dry-run   # drop to write
+```
+
+Rows are built the same way as the workflow's:
+- metadata comes from Europe PMC, journal names from Crossref, and study details from the studies view;
+- `citedSynapseIds` comes from the mined-mentions table;
+- primary pairs go to the publications table and the rest to Cited By, one row per paper;
+- a study already linked to the paper in either table is skipped, so rerunning adds nothing;
+- `confidence` is `reviewed` and `evidence` holds the review link;
+- every write is snapshotted.
+
+A preprint is added as the preprint; the weekly run swaps in its published version once PubMed links one.
+
 #### Synapse safety
 
 Every automated write to a Synapse table (the mentions table, the publications table and Cited By) is bracketed by snapshot versions, as in nf-research-tools-schema's Synapse safety rules. Snapshot comments carry the date, what was written and the workflow run link, e.g. `2026-11-10 before: classify adds 3 Cited By rows https://github.com/nf-osi/synapse-miner/actions/runs/123`. A write does not go ahead if its "before" snapshot fails. To undo a run, query the table at the "before" version (`SELECT * FROM syn78484103.<version>`). Nothing in this package deletes table rows.
@@ -197,6 +226,10 @@ Runs every **Monday at 22:00 UTC**.
 - Runs `search` for articles outside the Open Access download, adding new rows to the results table
 - Runs `classify`, appends new primary pairs to the publications table and new secondary/review/mention pairs to Cited By, and attaches the CSVs to the run's artifacts
 - Opens a `publication-review` issue when rows were added or updated, or new low-confidence pairs were left out, and commits `reported_low_confidence.json`; no issue when there is nothing to report
+
+### Add reviewed publications (`add-reviewed.yml`)
+
+Run by hand with the link to a reply on a review issue. It adds the pairs the reply lists (see [Adding reviewed pairs](#adding-reviewed-pairs-synapse-miner-add-reviewed)) and replies on the issue with what it added.
 
 Can be triggered manually from the Actions tab with an optional `max_files` parameter for testing, and `recheck_existing` to re-mine articles already in the table (a one-off backfill of IDs older parser versions missed).
 
