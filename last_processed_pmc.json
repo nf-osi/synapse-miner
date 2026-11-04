@@ -1,4 +1,7 @@
 {
   "last_processed_pmc_id": "PMC13710763",
-  "updated_at": "2026-11-04T05:17:28.525950"
+  "updated_at": "2026-11-04T05:17:28.525950",
+  "failed_files": {
+    "PMC13470001_PMC13479988.xml.gz": 1
+  }
 }
