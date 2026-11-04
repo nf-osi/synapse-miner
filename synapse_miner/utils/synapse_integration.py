@@ -7,6 +7,8 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Set
 
+from .synapse_safety import snapshots_around
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -171,7 +173,35 @@ class SynapseUploader:
         except Exception as e:
             logger.error(f"Error uploading results to table {table_id}: {e}")
             return False
-    
+
+    def upload_new_pairs_to_table(self, df: "pd.DataFrame", table_id: str) -> int:
+        """
+        Append rows whose (pmcid, synid) pair is not already in the table.
+
+        Unlike upload_new_results_to_table, an article already in the table can
+        still gain Synapse IDs that earlier mining missed. Errors are raised.
+
+        Args:
+            df: Rows with pmcid, synid and context
+            table_id: Synapse ID of the target table
+
+        Returns:
+            Number of rows uploaded
+        """
+        if df.empty:
+            return 0
+        existing = self.get_all_results(table_id)
+        existing_pairs = set(zip(existing["pmcid"].astype(str), existing["synid"].astype(str)))
+        new = df[[(p, s) not in existing_pairs
+                  for p, s in zip(df["pmcid"].astype(str), df["synid"].astype(str))]]
+        logger.info(f"{len(new)} of {len(df)} rows are new (pmcid, synid) pairs")
+        if new.empty:
+            return 0
+        with snapshots_around(self.syn, table_id, f"search adds {len(new)} mention rows"):
+            self.syn.store(Table(table_id, new[["pmcid", "synid", "context"]]))
+        logger.info(f"Uploaded {len(new)} new rows to table {table_id}")
+        return len(new)
+
     def batch_upload_workflow(self, batch_files: List[str], folder_id: str, 
                             table_id: str) -> bool:
         """
@@ -187,23 +217,26 @@ class SynapseUploader:
         """
         try:
             success_count = 0
-            
-            for batch_file in batch_files:
-                logger.info(f"Processing batch file: {batch_file}")
+
+            # One before/after snapshot pair brackets every table write in this run
+            with snapshots_around(self.syn, table_id,
+                                  f"weekly mining uploads {len(batch_files)} batch files"):
+                for batch_file in batch_files:
+                    logger.info(f"Processing batch file: {batch_file}")
                 
-                # Upload individual batch file to folder
-                file_id = self.upload_batch_file(batch_file, folder_id)
-                if not file_id:
-                    logger.error(f"Failed to upload batch file: {batch_file}")
-                    continue
+                    # Upload individual batch file to folder
+                    file_id = self.upload_batch_file(batch_file, folder_id)
+                    if not file_id:
+                        logger.error(f"Failed to upload batch file: {batch_file}")
+                        continue
                 
-                # Upload new results to table
-                if not self.upload_new_results_to_table(batch_file, table_id):
-                    logger.error(f"Failed to upload results to table from: {batch_file}")
-                    continue
+                    # Upload new results to table
+                    if not self.upload_new_results_to_table(batch_file, table_id):
+                        logger.error(f"Failed to upload results to table from: {batch_file}")
+                        continue
                     
-                success_count += 1
-                logger.info(f"Successfully processed batch file: {batch_file}")
+                    success_count += 1
+                    logger.info(f"Successfully processed batch file: {batch_file}")
             
             logger.info(f"Completed batch upload: {success_count}/{len(batch_files)} successful")
             return success_count == len(batch_files)

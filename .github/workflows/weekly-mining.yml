@@ -12,6 +12,15 @@ on:
         required: false
         default: ''
         type: string
+      recheck_existing:
+        description: 'Search: also re-mine articles already in the table (one-off backfill)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write   # push the tracking file
+  issues: write     # open the review issue for new publication rows
 
 jobs:
   mine-synapse-ids:
@@ -77,6 +86,64 @@ jobs:
           echo "No tracking file found"
         fi
     
+    - name: Search NCBI PMC and Europe PMC beyond the open-access download
+      env:
+        SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
+      run: |
+        RECHECK_ARG=""
+        if [ "${{ github.event.inputs.recheck_existing }}" = "true" ]; then
+          RECHECK_ARG="--recheck-existing"
+        fi
+
+        synapse-miner search \
+          --synapse-pat "$SYNAPSE_PAT" \
+          --table-id syn66047339 \
+          --output search_results.csv \
+          $RECHECK_ARG
+
+    - name: Classify publications for NF Data Portal studies
+      env:
+        SYNAPSE_PAT: ${{ secrets.SYNAPSE_PAT }}
+      run: |
+        synapse-miner classify \
+          --synapse-pat "$SYNAPSE_PAT" \
+          --table-id syn66047339 \
+          --output classified_publications.csv \
+          --cited-by-output cited_by.csv \
+          --primary-output primary_publications.csv \
+          --cited-by-table syn78484103 \
+          --add-primary-publications \
+          --review-issue-output review_issue.md \
+          --reported-file reported_low_confidence.json
+
+    - name: Open an issue to review new publication rows
+      id: review_issue
+      if: always() && hashFiles('review_issue.md') != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh label create publication-review --color FBCA04 \
+          --description "New rows added to the NF portal publication tables" 2>/dev/null || true
+        gh issue create \
+          --title "$(cat review_issue.md.title)" \
+          --body-file review_issue.md \
+          --label publication-review
+
+    - name: Commit reported low-confidence pairs
+      # Only once the issue exists, so a failed issue does not mark pairs as reported
+      if: always() && steps.review_issue.outcome == 'success'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add reported_low_confidence.json
+        if git diff --staged --quiet; then
+          echo "No new reported pairs"
+        else
+          git commit -m "Update reported low-confidence publication pairs [skip ci]"
+          git pull --rebase
+          git push
+        fi
+
     - name: Upload workflow artifacts
       uses: actions/upload-artifact@v4
       if: always()
@@ -86,4 +153,9 @@ jobs:
           workflow_results.csv
           workflow_results.csv.*.csv
           last_processed_pmc.json
+          search_results.csv
+          classified_publications.csv
+          cited_by.csv
+          primary_publications.csv
+          review_issue.md
         retention-days: 30

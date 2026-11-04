@@ -27,6 +27,14 @@ from rich.progress import (
 
 logger = logging.getLogger("synapse_miner.core")
 
+# Inline formatting tags join their text to the surrounding text without a
+# space, so IDs marked up like "<italic>syn</italic>4939902" stay whole
+INLINE_TAGS = {
+    "italic", "bold", "sup", "sub", "underline", "sc", "monospace", "roman",
+    "sans-serif", "overline", "strike", "ext-link", "uri", "named-content",
+    "styled-content", "inline-formula", "abbrev", "email",
+}
+
 def process_article(article_xml: str, context_size: int) -> Tuple[Optional[str], List[Dict]]:
     """Process a single article in a worker process."""
     findings = []
@@ -68,14 +76,15 @@ def process_article(article_xml: str, context_size: int) -> Tuple[Optional[str],
             # Get text from all children
             for child in element:
                 child_text = extract_text(child)
+                inline = child.tag.split('}')[-1] in INLINE_TAGS
                 # Add a space before child text if needed
-                if child_text and text and not text.endswith(' '):
+                if child_text and text and not text.endswith(' ') and not inline:
                     text += ' '
                 text += child_text
                 # Add tail text (text after the element)
                 if child.tail:
                     # Add a space before tail text if needed
-                    if text and not text.endswith(' '):
+                    if text and not text.endswith(' ') and not inline:
                         text += ' '
                     text += child.tail
                     
@@ -100,6 +109,12 @@ def process_article(article_xml: str, context_size: int) -> Tuple[Optional[str],
         back = root.find(".//back")
         if back is not None:
             text_parts.append(extract_text(back))
+
+        # Extract from tables and figures placed outside the body (NCBI PMC
+        # full text puts them in a floats group)
+        floats = root.find(".//floats-group")
+        if floats is not None:
+            text_parts.append(extract_text(floats))
                     
         # Join all text parts with spaces and clean up whitespace
         text = ' '.join(text_parts)

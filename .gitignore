@@ -48,3 +48,5 @@ temp*/
 
 # EBI Search entity metadata cache (XML is committed; cache is a build artifact)
 ebisearch/entity_cache.json
+# Classification cache (Europe PMC responses, Synapse project lookups)
+.cache/

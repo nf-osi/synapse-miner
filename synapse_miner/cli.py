@@ -243,6 +243,130 @@ def main() -> None:
             help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
 
+    # Publication classification command
+    if SYNAPSE_AVAILABLE:
+        classify_parser = subparsers.add_parser(
+            "classify",
+            help="Label mined papers as primary, secondary, review or mention for each NF Data Portal study"
+        )
+        classify_parser.add_argument(
+            "--table-id",
+            default="syn66047339",
+            help="Synapse table of mined mentions (default: syn66047339)"
+        )
+        classify_parser.add_argument(
+            "--studies-view",
+            default="syn52677631",
+            help="Portal studies view (default: syn52677631)"
+        )
+        classify_parser.add_argument(
+            "--publications-table",
+            default="syn16857542",
+            help="Portal publications table, used to flag already-tracked papers (default: syn16857542)"
+        )
+        classify_parser.add_argument(
+            "--funder",
+            action="append",
+            help="Only keep studies funded by this agency (e.g. NTAP); repeat for several"
+        )
+        classify_parser.add_argument(
+            "-o", "--output",
+            default="classified_publications.csv",
+            help="Output CSV, one row per (paper, study) (default: classified_publications.csv)"
+        )
+        classify_parser.add_argument(
+            "--cache-dir",
+            default=".cache/classify",
+            help="Directory caching Europe PMC responses and Synapse project lookups (default: .cache/classify)"
+        )
+        classify_parser.add_argument(
+            "--cited-by-output",
+            default="cited_by.csv",
+            help="CSV of all Cited By rows (secondary, review, mention) in the publications table format "
+                 "(default: cited_by.csv)"
+        )
+        classify_parser.add_argument(
+            "--primary-output",
+            default="primary_publications.csv",
+            help="CSV of all primary rows (high/medium confidence) in the publications table format "
+                 "(default: primary_publications.csv)"
+        )
+        classify_parser.add_argument(
+            "--cited-by-table",
+            help="Synapse Cited By table to append new (paper, study) pairs to (omit to only write CSVs)"
+        )
+        classify_parser.add_argument(
+            "--add-primary-publications",
+            action="store_true",
+            help="Append new primary (paper, study) pairs to --publications-table"
+        )
+        classify_parser.add_argument(
+            "--create-cited-by-table-in",
+            metavar="PROJECT_ID",
+            help="Create a new Cited By table in this Synapse project, then fill it"
+        )
+        classify_parser.add_argument(
+            "--review-issue-output",
+            help="When rows were added or updated, or new low-confidence pairs were left out, write a "
+                 "review issue body here (and its title to <path>.title)"
+        )
+        classify_parser.add_argument(
+            "--reported-file",
+            default="reported_low_confidence.json",
+            help="JSON of left-out low-confidence pairs already reported in an issue, so each is reported "
+                 "once (default: reported_low_confidence.json)"
+        )
+        classify_parser.add_argument(
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
+        )
+
+    # Search beyond the Europe PMC open-access download
+    if SYNAPSE_AVAILABLE:
+        search_parser = subparsers.add_parser(
+            "search",
+            help="Find and mine articles mentioning Synapse in NCBI PMC and Europe PMC full text"
+        )
+        search_parser.add_argument(
+            "--table-id",
+            default="syn66047339",
+            help="Synapse results table to add new mentions to (default: syn66047339)"
+        )
+        search_parser.add_argument(
+            "--query",
+            action="append",
+            help="Full-text query; repeat for several (default: Synapse links/DOIs, 'Synapse ID' phrasing and Sage portal names)"
+        )
+        search_parser.add_argument(
+            "--recheck-existing",
+            action="store_true",
+            help="Also re-mine articles already in the table, adding Synapse IDs earlier mining missed"
+        )
+        search_parser.add_argument(
+            "--max-articles",
+            type=int,
+            help="Maximum number of articles to mine (for testing)"
+        )
+        search_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Mine and write the CSV without uploading to Synapse"
+        )
+        search_parser.add_argument(
+            "-o", "--output",
+            default="search_results.csv",
+            help="CSV of mined mentions (default: search_results.csv)"
+        )
+        search_parser.add_argument(
+            "--cache-dir",
+            default=".cache/search",
+            help="Directory caching NCBI full text (default: .cache/search)"
+        )
+        search_parser.add_argument(
+            "--synapse-pat",
+            help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
+        )
+
     args = parser.parse_args()
 
     # Set up logging
@@ -298,6 +422,12 @@ def main() -> None:
         elif args.command == "labslinks" and SYNAPSE_AVAILABLE:
             # Generate LabLinks XML from Synapse table
             run_labslinks_workflow(args, logger)
+
+        elif args.command == "classify" and SYNAPSE_AVAILABLE:
+            run_classify_workflow(args, logger)
+
+        elif args.command == "search" and SYNAPSE_AVAILABLE:
+            run_search_workflow(args, logger)
 
         else:
             parser.print_help()
@@ -504,6 +634,153 @@ def run_ebisearch_workflow(args, logger):
         db_description=args.db_description,
     )
     logger.info(f"Done — EBI Search XML written to {output_path}")
+
+
+def run_classify_workflow(args, logger):
+    """Classify mined papers by how they relate to NF Data Portal studies."""
+    import os
+    from synapse_miner.portal_tables import (
+        CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, apply_merges, build_cited_by, build_primary,
+        create_cited_by_table, left_out_key, load_pair_keys, load_reported, load_table_rows,
+        not_added, plan_writes, review_issue, save_reported, update_preprint_rows,
+    )
+    from synapse_miner.classify import classify_publications
+    from synapse_miner.utils.europepmc_client import EuropePMCClient
+    from synapse_miner.utils.crossref_client import CrossrefClient
+    from synapse_miner.utils.ncbi_pmc_client import NCBIPMCClient
+    from synapse_miner.utils.study_resolver import (
+        StudyResolver, load_studies, load_tracked_publications,
+    )
+
+    token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+    try:
+        syn = SynapseUploader(pat=token).syn
+    except Exception as e:
+        logger.error(f"Failed to initialize Synapse client: {e}")
+        sys.exit(1)
+
+    try:
+        mentions = syn.tableQuery(f"SELECT pmcid, synid, context FROM {args.table_id}").asDataFrame()
+        studies = load_studies(syn, args.studies_view)
+        tracked = load_tracked_publications(syn, args.publications_table)
+    except Exception as e:
+        logger.error(f"Failed to load Synapse tables: {e}")
+        sys.exit(1)
+
+    resolver = StudyResolver(syn, studies, cache_path=os.path.join(args.cache_dir, "projects.json"))
+    epmc = EuropePMCClient(cache_dir=os.path.join(args.cache_dir, "europepmc"))
+    ncbi = NCBIPMCClient(cache_dir=os.path.join(args.cache_dir, "ncbi"))
+    crossref = CrossrefClient(cache_path=os.path.join(args.cache_dir, "crossref.json"))
+    results = classify_publications(mentions, studies, tracked, resolver, epmc,
+                                    funders=args.funder, ncbi=ncbi, crossref=crossref)
+    results.to_csv(args.output, index=False)
+    logger.info(f"Wrote {len(results)} paper-study rows to {args.output}")
+
+    primary = build_primary(results, studies)
+    cited_by = build_cited_by(results, studies)
+    primary.to_csv(args.primary_output, index=False)
+    cited_by.to_csv(args.cited_by_output, index=False)
+    logger.info(f"Wrote {len(primary)} primary rows to {args.primary_output} "
+                f"and {len(cited_by)} Cited By rows to {args.cited_by_output}")
+
+    cited_by_table = args.cited_by_table
+    if not (cited_by_table or args.create_cited_by_table_in or args.add_primary_publications):
+        return
+    additions, merged, replaced, to_remove, failed = {}, {}, [], [], False
+    existing = set()
+    try:
+        if args.create_cited_by_table_in:
+            cited_by_table = create_cited_by_table(syn, args.create_cited_by_table_in)
+        # Point existing preprint rows at their published versions first, so a
+        # published version is not appended next to its own preprint
+        for table_id, is_cited_by in ((args.publications_table, False), (cited_by_table, True)):
+            if table_id and (is_cited_by or args.add_primary_publications):
+                done, manual = update_preprint_rows(syn, table_id, epmc, cited_by=is_cited_by,
+                                                    crossref=crossref)
+                replaced += done
+                to_remove += manual
+        # A pair already in either table is never added again, to either table
+        existing = load_pair_keys(syn, args.publications_table)
+        if cited_by_table:
+            existing |= load_pair_keys(syn, cited_by_table)
+        # One row per paper: new studies for a paper already in a table are
+        # added to its existing row rather than to a new row
+        targets = []
+        if args.add_primary_publications:
+            targets.append((args.publications_table, primary, PUBLICATION_COLUMNS, False, "primary publication"))
+        if cited_by_table:
+            targets.append((cited_by_table, cited_by, CITED_BY_COLUMNS, True, "Cited By"))
+        for table_id, rows, columns, match_relationship, label in targets:
+            new_rows, merges = plan_writes(rows, load_table_rows(syn, table_id), existing, match_relationship)
+            apply_merges(syn, table_id, merges, f"classify links {len(merges)} existing {label} rows to more studies")
+            merged[table_id] = merges
+            append_rows(syn, table_id, new_rows, columns, f"classify adds {len(new_rows)} {label} rows")
+            additions[table_id] = new_rows
+    except Exception as e:
+        logger.error(f"Failed to update the portal publication tables: {e}")
+        failed = True
+
+    # Changes made before a failure still get a review issue. Left-out pairs
+    # are listed once, when first left out, not on every run.
+    left_out = not_added(results, existing)
+    left_out_keys = {left_out_key(row) for row in left_out.itertuples(index=False)}
+    reported = load_reported(args.reported_file)
+    new_left_out = left_out[[left_out_key(row) not in reported for row in left_out.itertuples(index=False)]]
+    issue = review_issue(additions, replaced, to_remove, new_left_out, left_out_total=len(left_out), merged=merged)
+    if issue and args.review_issue_output:
+        title, body = issue
+        with open(args.review_issue_output, "w") as f:
+            f.write(body)
+        with open(f"{args.review_issue_output}.title", "w") as f:
+            f.write(title)
+        save_reported(args.reported_file, reported | left_out_keys)
+        logger.info(f"Wrote review issue to {args.review_issue_output}")
+    elif not issue:
+        logger.info("Nothing added, replaced or newly left out; no review issue needed")
+    if failed:
+        sys.exit(1)
+
+
+def run_search_workflow(args, logger):
+    """Find and mine articles mentioning Synapse beyond the open-access download."""
+    import os
+    from synapse_miner.search import DEFAULT_QUERIES, search_and_mine
+    from synapse_miner.utils.europepmc_client import EuropePMCClient
+    from synapse_miner.utils.ncbi_pmc_client import NCBIPMCClient
+
+    token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+    try:
+        uploader = SynapseUploader(pat=token)
+        existing = uploader.get_all_results(args.table_id)
+    except Exception as e:
+        logger.error(f"Failed to read Synapse table {args.table_id}: {e}")
+        sys.exit(1)
+    existing_pmcids = set(existing["pmcid"].astype(str).str.replace("pmc:", "", regex=False))
+
+    ncbi = NCBIPMCClient(cache_dir=os.path.join(args.cache_dir, "ncbi"))
+    epmc = EuropePMCClient()
+    try:
+        mentions, without_pmcid = search_and_mine(
+            args.query or DEFAULT_QUERIES, existing_pmcids, ncbi, epmc,
+            recheck_existing=args.recheck_existing, max_articles=args.max_articles)
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        sys.exit(1)
+
+    mentions.to_csv(args.output, index=False)
+    logger.info(f"Wrote {len(mentions)} mentions to {args.output}")
+    if without_pmcid:
+        logger.info(f"{len(without_pmcid)} matching records have no PMCID and were not mined, e.g. "
+                    + ", ".join(f"{r['source']}:{r['id']}" for r in without_pmcid[:5]))
+
+    if args.dry_run:
+        logger.info("--dry-run set: not uploading to Synapse")
+        return
+    try:
+        uploader.upload_new_pairs_to_table(mentions, args.table_id)
+    except Exception as e:
+        logger.error(f"Failed to upload to Synapse table {args.table_id}: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
