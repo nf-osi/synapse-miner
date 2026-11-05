@@ -185,6 +185,16 @@ Rows are built the same way as the workflow's:
 
 A preprint is added as the preprint; the weekly run swaps in its published version once PubMed links one.
 
+#### Fixing funders (`synapse-miner fix-funders`)
+
+syn16857542's `fundingAgency` column defaults to `[NTAP, CTF, GFF]`, so a row entered without funders gets those three. To set rows' funders to their studies' funders (from the studies view):
+
+```bash
+synapse-miner fix-funders 422 423 424 --dry-run   # drop --dry-run to write; --table syn78484103 for Cited By
+```
+
+Rows with no study, or whose studies have no funders, are left alone; the write is snapshotted.
+
 #### Synapse safety
 
 Every automated write to a Synapse table (the mentions table, the publications table and Cited By) is bracketed by snapshot versions, as in nf-research-tools-schema's Synapse safety rules. Snapshot comments carry the date, what was written and the workflow run link, e.g. `2026-11-10 before: classify adds 3 Cited By rows https://github.com/nf-osi/synapse-miner/actions/runs/123`. A write does not go ahead if its "before" snapshot fails. To undo a run, query the table at the "before" version (`SELECT * FROM syn78484103.<version>`). Nothing in this package deletes table rows.

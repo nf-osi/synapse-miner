@@ -255,3 +255,25 @@ def describe(plan: Dict[str, Dict]) -> str:
                          f"{str(change['title'])[:70]!r} journal={change['journal']!r} year={change['year']} "
                          f"doi={change['doi']} authors={len(change['author'] or [])}")
     return "\n".join(lines) or "Nothing to add: every reviewed pair is already in the tables"
+
+
+def plan_funder_fixes(target: pd.DataFrame, studies: Dict[str, Dict], row_ids: Iterable[int]) -> Dict[int, Dict]:
+    """
+    {ROW_ID: {"fundingAgency": [...]}} setting each row's funders to its studies' funders.
+
+    Rows with no study, whose studies have no funders, or that already match
+    are skipped.
+    """
+    changes = {}
+    for row_id in row_ids:
+        current = target[target["ROW_ID"].astype(int) == int(row_id)]
+        if current.empty:
+            logger.warning(f"ROW_ID {row_id} is not in the table; skipping it")
+            continue
+        funders = []
+        for study in _as_list(current.iloc[0]["studyId"]):
+            funders += [f for f in studies.get(study, {}).get("funding_agency", []) if f not in funders]
+        funders = _fit_list("fundingAgency", funders)
+        if funders and set(funders) != set(_as_list(current.iloc[0]["fundingAgency"])):
+            changes[int(row_id)] = {"fundingAgency": funders}
+    return changes

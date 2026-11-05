@@ -94,3 +94,18 @@ def test_plan_replacements_overwrites_paper_columns_only():
     # Nor one whose paper is already linked to the study
     with pytest.raises(ValueError, match="already linked"):
         plan_replacements(pairs, {"syn10": {}}, ["primary"], target, {("pmid:1", "syn10")}, PAPER_COLUMNS)
+
+
+def test_plan_funder_fixes():
+    from synapse_miner.reviewed import plan_funder_fixes
+    target = pd.DataFrame([
+        {"ROW_ID": 1, "studyId": ["syn1"], "fundingAgency": ["NTAP", "CTF", "GFF"]},
+        {"ROW_ID": 2, "studyId": [], "fundingAgency": ["NTAP", "CTF", "GFF"]},
+        {"ROW_ID": 3, "studyId": ["syn2"], "fundingAgency": ["NIH-NCI"]},
+        {"ROW_ID": 4, "studyId": ["syn1", "syn2"], "fundingAgency": ["NTAP"]},
+    ])
+    studies = {"syn1": {"funding_agency": ["Wellcome Trust"]}, "syn2": {"funding_agency": ["NIH-NCI"]}}
+    assert plan_funder_fixes(target, studies, [1, 2, 3, 4, 99]) == {
+        1: {"fundingAgency": ["Wellcome Trust"]},       # default replaced
+        4: {"fundingAgency": ["Wellcome Trust", "NIH-NCI"]},  # union of the row's studies
+    }  # 2 has no study, 3 already matches, 99 is not in the table

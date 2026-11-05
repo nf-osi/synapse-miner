@@ -34,6 +34,10 @@ To **fix an existing row** rather than add one, end the line with `replaces row 
    Every write is snapshotted before and after (`synapse_safety.py`). Rerunning is a no-op because existing paper-study pairs are skipped.
 4. **Report on the issue.** List each row added (table, PMID, study, relationship) and the snapshot versions, and anything left for a person, such as a preprint with a single author. Close the issue if every pair is handled.
 
+## Funders
+
+To reset other rows' funders to their studies' funders, use `synapse-miner fix-funders <ROW_ID>... --dry-run`, then rerun without `--dry-run`. This fixes rows that hold the column default. Find candidates by comparing each row's `fundingAgency` with its studies' funders in syn52694652.
+
 ## Don't
 
 - Don't write rows by hand with `syn.store`. Use the command so de-duplication, `studyName` IDs, DOI links and snapshots are applied.
