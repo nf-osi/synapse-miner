@@ -14,7 +14,7 @@ PMID:40744913 (FGFR glioma, syn5698493): secondary
 
 Relationships: `primary` goes to the publications table (syn16857542); `secondary`, `review` and `mention` go to Cited By (syn78484103).
 
-To **fix an existing row** rather than add one, end the line with `replaces row <ROW_ID>`, e.g. `PMID:34711849 (syn74287631): primary, replaces row 431`. Use this for placeholder rows: no PMID, a dataset DOI, the study name as title, or author "Unknown". Find the ROW_ID with `SELECT * FROM syn16857542 WHERE studyId HAS ('<study>')`. The paper columns change and `fundingAgency` is reset to the study's funders. syn16857542's `fundingAgency` column defaults to `[NTAP, CTF, GFF]`, so a hand-entered row with exactly those funders is suspect. The row must already be linked to the study, and rerunning the same line refreshes it.
+To **fix an existing row** rather than add one, end the line with `replaces PMID:<PMID>` naming the paper the study's row holds now, e.g. `PMID:36283200 (syn74287631): primary, replaces PMID:34711849`. Placeholder rows (no PMID, a dataset DOI, the study name as title, or author "Unknown") are named by their DOI: `replaces DOI:<doi>`. See what a study's rows hold with `SELECT * FROM syn16857542 WHERE studyId HAS ('<study>')`. The paper columns change and `fundingAgency` is reset to the study's funders. syn16857542's `fundingAgency` column defaults to `[NTAP, CTF, GFF]`, so a hand-entered row with exactly those funders is suspect. Exactly one row linked to the study must hold that paper, and rerunning the same line refreshes it.
 
 ## Steps
 

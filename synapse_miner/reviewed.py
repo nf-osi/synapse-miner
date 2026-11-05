@@ -8,8 +8,9 @@ issue. A reviewer answers with one decision per line, e.g.
     PMID:40744913 (FGFR glioma, syn5698493): secondary
 
 and `synapse-miner add-reviewed` turns those lines into rows. A line ending in
-"replaces row 431" fixes that existing row in place instead (e.g. a
-placeholder row holding a dataset DOI): its paper columns are overwritten,
+"replaces PMID:34711849" (or "replaces DOI:<doi>", for a placeholder row with
+no PMID) fixes the study's row holding that paper in place instead: its paper
+columns are overwritten,
 fundingAgency is set to its studies' funders (as for new rows), and its study,
 disease and manifestation columns are kept: metadata from
 Europe PMC (journal names from Crossref), study details from the studies view,
@@ -46,9 +47,11 @@ _DECISION = re.compile(
     r"(?:PMID[:\s]*)?\b(\d{6,9})\b.*?\b(syn\d+)\b.*?\b(" + "|".join(RELATIONSHIPS) + r")\b",
     re.IGNORECASE,
 )
-_REPLACES = re.compile(r"\breplac\w*\s+(?:ROW_?ID|row)?\s*#?\s*(\d+)\b", re.IGNORECASE)
+# "replaces PMID:34711849" or "replaces DOI:10.7937/TCIA.X" (the paper the row holds now)
+_REPLACES = re.compile(r"\breplac\w*\s+(?:PMID[:\s]*(\d+)\b|DOI[:\s]*(?:https?://doi\.org/)?(10\.\S+?)[.,;)]*(?:\s|$))",
+                       re.IGNORECASE)
 
-# Columns a "replaces row N" decision overwrites (plus fundingAgency, from the
+# Columns a "replaces PMID:N" decision overwrites (plus fundingAgency, from the
 # row's studies); study, disease and manifestation columns of the row are kept
 PAPER_COLUMNS = ["doi", "journal", "title", "year", "pmid", "author", "publicationType"]
 CITED_BY_PAPER_COLUMNS = PAPER_COLUMNS + ["pmcid", "isPreprint", "confidence", "citedSynapseIds", "evidence"]
@@ -58,7 +61,8 @@ class Decision(NamedTuple):
     pmid: str
     study_id: str
     relationship: str
-    replace_row: Optional[int] = None
+    # "pmid:<n>" or "doi:<doi>" of the paper in the row to fix in place
+    replaces: Optional[str] = None
 
 
 def parse_decisions(text: str) -> List[Decision]:
@@ -69,8 +73,10 @@ def parse_decisions(text: str) -> List[Decision]:
         if match:
             pmid, study, relationship = match.groups()
             replaces = _REPLACES.search(line[match.end():])
-            decisions.append(Decision(pmid, study, relationship.lower(),
-                                      int(replaces.group(1)) if replaces else None))
+            key = None
+            if replaces:
+                key = f"pmid:{replaces.group(1)}" if replaces.group(1) else f"doi:{_doi_key(replaces.group(2))}"
+            decisions.append(Decision(pmid, study, relationship.lower(), key))
     return decisions
 
 
@@ -123,7 +129,7 @@ def reviewed_pairs(decisions: List[Decision], metadata: Dict[str, Dict], cited: 
             "relationship": d.relationship,
             "confidence": REVIEWED,
             "evidence": evidence,
-            "replace_row": d.replace_row,
+            "replaces": d.replaces,
         })
     return pd.DataFrame(rows)
 
@@ -147,7 +153,7 @@ def add_reviewed(syn, decisions: List[Decision], evidence: str, epmc, studies: D
     pairs = reviewed_pairs(decisions, metadata, cited, evidence, crossref)
 
     existing = load_pair_keys(syn, publications_table) | load_pair_keys(syn, cited_by_table)
-    replacing = pairs["replace_row"].notna()
+    replacing = pairs["replaces"].notna()
     plan = {}
     for label, table_id, relationships, columns, match_relationship in (
         ("publications", publications_table, PRIMARY_RELATIONSHIPS, PUBLICATION_COLUMNS, False),
@@ -192,7 +198,8 @@ def plan_replacements(pairs: pd.DataFrame, studies: Dict[str, Dict], relationshi
     """
     {ROW_ID: {column: new value}} for decisions that replace an existing row.
 
-    The row must already be linked to the decision's study, and the paper must
+    The row is the one linked to the decision's study that holds the paper
+    named after "replaces" (by PMID or DOI); exactly one must. The paper must
     not already be linked to that study in another row (that would duplicate
     it); replacing a row with the paper it already holds refreshes it.
     fundingAgency becomes the funders of the row's studies, unless none of
@@ -204,12 +211,8 @@ def plan_replacements(pairs: pd.DataFrame, studies: Dict[str, Dict], relationshi
     changes = {}
     for decision, row in zip(pairs[pairs["relationship"].isin(set(relationships))].itertuples(index=False),
                              built.itertuples(index=False)):
-        row_id = int(decision.replace_row)
-        current = target[target["ROW_ID"].astype(int) == row_id]
-        if current.empty:
-            raise ValueError(f"ROW_ID {row_id} is not in the table that {decision.relationship} pairs go to")
-        if decision.study_id not in _as_list(current.iloc[0]["studyId"]):
-            raise ValueError(f"ROW_ID {row_id} is not linked to {decision.study_id}; not replacing it")
+        current = _row_holding(target, decision.replaces, decision.study_id)
+        row_id = int(current.iloc[0]["ROW_ID"])
         ids = {f"pmid:{_pmid_digits(row.pmid)}", f"doi:{_doi_key(row.doi)}"}
         current_ids = {f"pmid:{_pmid_digits(current.iloc[0].get('pmid'))}",
                        f"doi:{_doi_key(current.iloc[0].get('doi'))}"} - {"pmid:", "doi:"}
@@ -222,6 +225,22 @@ def plan_replacements(pairs: pd.DataFrame, studies: Dict[str, Dict], relationshi
         if funders:
             changes[row_id]["fundingAgency"] = _fit_list("fundingAgency", funders)
     return changes
+
+
+def _row_holding(target: pd.DataFrame, paper: str, study_id: str) -> pd.DataFrame:
+    """The one row linked to study_id whose PMID or DOI is paper ('pmid:<n>' / 'doi:<doi>')."""
+    kind, value = paper.split(":", 1)
+    held = target["pmid"].map(_pmid_digits) if kind == "pmid" else target["doi"].map(_doi_key)
+    linked = target["studyId"].map(lambda ids: study_id in _as_list(ids))
+    found = target[(held == value) & linked]
+    label = f"{kind.upper()}:{value}"
+    if found.empty:
+        raise ValueError(f"No row linked to {study_id} holds {label} in the table "
+                         f"that this relationship goes to; not replacing anything")
+    if len(found) > 1:
+        rows = ", ".join(str(int(r)) for r in found["ROW_ID"])
+        raise ValueError(f"Rows {rows} are all linked to {study_id} and hold {label}; fix them by hand")
+    return found
 
 
 def apply_replacements(syn, table_id: str, changes: Dict[int, Dict], action: str) -> int:
