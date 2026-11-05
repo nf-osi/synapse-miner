@@ -7,7 +7,12 @@ issue. A reviewer answers with one decision per line, e.g.
     PMID:40585258 (liquid biopsy, syn51115812): primary
     PMID:40744913 (FGFR glioma, syn5698493): secondary
 
-and `synapse-miner add-reviewed` turns those lines into rows: metadata from
+and `synapse-miner add-reviewed` turns those lines into rows. A line ending in
+"replaces PMID:34711849" (or "replaces DOI:<doi>", for a placeholder row with
+no PMID) fixes the study's row holding that paper in place instead: its paper
+columns are overwritten,
+fundingAgency is set to its studies' funders (as for new rows), and its study,
+disease and manifestation columns are kept: metadata from
 Europe PMC (journal names from Crossref), study details from the studies view,
 the Synapse IDs the paper cites from the mined-mentions table. Rows are written
 like the workflow's own: primary pairs to the publications table, secondary /
@@ -25,8 +30,9 @@ import pandas as pd
 from .portal_tables import (
     CITED_BY_COLUMNS, CITED_BY_RELATIONSHIPS, PRIMARY_RELATIONSHIPS, PUBLICATION_COLUMNS,
     append_rows, apply_merges, build_rows, group_by_paper, load_pair_keys, load_table_rows,
-    plan_writes,
+    plan_writes, _as_list, _doi_key, _fit_list, _pmid_digits,
 )
+from .utils.synapse_safety import snapshots_around
 from .utils.crossref_client import clean_journal_title
 from .utils.europepmc_client import author_names
 
@@ -41,12 +47,22 @@ _DECISION = re.compile(
     r"(?:PMID[:\s]*)?\b(\d{6,9})\b.*?\b(syn\d+)\b.*?\b(" + "|".join(RELATIONSHIPS) + r")\b",
     re.IGNORECASE,
 )
+# "replaces PMID:34711849" or "replaces DOI:10.7937/TCIA.X" (the paper the row holds now)
+_REPLACES = re.compile(r"\breplac\w*\s+(?:PMID[:\s]*(\d+)\b|DOI[:\s]*(?:https?://doi\.org/)?(10\.\S+?)[.,;)]*(?:\s|$))",
+                       re.IGNORECASE)
+
+# Columns a "replaces PMID:N" decision overwrites (plus fundingAgency, from the
+# row's studies); study, disease and manifestation columns of the row are kept
+PAPER_COLUMNS = ["doi", "journal", "title", "year", "pmid", "author", "publicationType"]
+CITED_BY_PAPER_COLUMNS = PAPER_COLUMNS + ["pmcid", "isPreprint", "confidence", "citedSynapseIds", "evidence"]
 
 
 class Decision(NamedTuple):
     pmid: str
     study_id: str
     relationship: str
+    # "pmid:<n>" or "doi:<doi>" of the paper in the row to fix in place
+    replaces: Optional[str] = None
 
 
 def parse_decisions(text: str) -> List[Decision]:
@@ -56,7 +72,11 @@ def parse_decisions(text: str) -> List[Decision]:
         match = _DECISION.search(line)
         if match:
             pmid, study, relationship = match.groups()
-            decisions.append(Decision(pmid, study, relationship.lower()))
+            replaces = _REPLACES.search(line[match.end():])
+            key = None
+            if replaces:
+                key = f"pmid:{replaces.group(1)}" if replaces.group(1) else f"doi:{_doi_key(replaces.group(2))}"
+            decisions.append(Decision(pmid, study, relationship.lower(), key))
     return decisions
 
 
@@ -109,6 +129,7 @@ def reviewed_pairs(decisions: List[Decision], metadata: Dict[str, Dict], cited: 
             "relationship": d.relationship,
             "confidence": REVIEWED,
             "evidence": evidence,
+            "replaces": d.replaces,
         })
     return pd.DataFrame(rows)
 
@@ -132,18 +153,24 @@ def add_reviewed(syn, decisions: List[Decision], evidence: str, epmc, studies: D
     pairs = reviewed_pairs(decisions, metadata, cited, evidence, crossref)
 
     existing = load_pair_keys(syn, publications_table) | load_pair_keys(syn, cited_by_table)
+    replacing = pairs["replaces"].notna()
     plan = {}
     for label, table_id, relationships, columns, match_relationship in (
         ("publications", publications_table, PRIMARY_RELATIONSHIPS, PUBLICATION_COLUMNS, False),
         ("cited_by", cited_by_table, CITED_BY_RELATIONSHIPS, CITED_BY_COLUMNS, True),
     ):
-        rows = group_by_paper(build_rows(pairs, studies, relationships))
-        new_rows, merges = plan_writes(rows, load_table_rows(syn, table_id), existing, match_relationship)
-        plan[label] = {"table": table_id, "new": new_rows, "merges": merges, "columns": columns}
+        target = load_table_rows(syn, table_id)
+        rows = group_by_paper(build_rows(pairs[~replacing], studies, relationships))
+        new_rows, merges = plan_writes(rows, target, existing, match_relationship)
+        replacements = plan_replacements(pairs[replacing], studies, relationships, target, existing,
+                                         CITED_BY_PAPER_COLUMNS if match_relationship else PAPER_COLUMNS)
+        plan[label] = {"table": table_id, "new": new_rows, "merges": merges, "columns": columns,
+                       "replacements": replacements}
 
     for label, p in plan.items():
         logger.info(f"{p['table']} ({label}): {len(p['new'])} new rows, "
-                    f"{len(p['merges'])} existing rows linked to more studies")
+                    f"{len(p['merges'])} existing rows linked to more studies, "
+                    f"{len(p['replacements'])} rows fixed in place")
     if dry_run:
         return plan
     for label, p in plan.items():
@@ -152,7 +179,84 @@ def add_reviewed(syn, decisions: List[Decision], evidence: str, epmc, studies: D
                      f"add-reviewed links {len(p['merges'])} existing rows to more studies: {source}")
         append_rows(syn, p["table"], p["new"], p["columns"],
                     f"add-reviewed adds {len(p['new'])} rows: {source}")
+        apply_replacements(syn, p["table"], p["replacements"],
+                           f"add-reviewed fixes rows {', '.join(map(str, p['replacements']))}: {source}")
     return plan
+
+
+def _plain(value):
+    """numpy/pandas scalars and lists as plain Python values for a table update."""
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    if value is None or (not isinstance(value, (list, str)) and pd.isna(value)):
+        return None
+    return value.item() if hasattr(value, "item") else value
+
+
+def plan_replacements(pairs: pd.DataFrame, studies: Dict[str, Dict], relationships: Iterable[str],
+                      target: pd.DataFrame, existing, columns: List[str]) -> Dict[int, Dict]:
+    """
+    {ROW_ID: {column: new value}} for decisions that replace an existing row.
+
+    The row is the one linked to the decision's study that holds the paper
+    named after "replaces" (by PMID or DOI); exactly one must. The paper must
+    not already be linked to that study in another row (that would duplicate
+    it); replacing a row with the paper it already holds refreshes it.
+    fundingAgency becomes the funders of the row's studies, unless none of
+    them has any.
+    """
+    if pairs.empty:
+        return {}
+    built = build_rows(pairs, studies, relationships)
+    changes = {}
+    for decision, row in zip(pairs[pairs["relationship"].isin(set(relationships))].itertuples(index=False),
+                             built.itertuples(index=False)):
+        current = _row_holding(target, decision.replaces, decision.study_id)
+        row_id = int(current.iloc[0]["ROW_ID"])
+        ids = {f"pmid:{_pmid_digits(row.pmid)}", f"doi:{_doi_key(row.doi)}"}
+        current_ids = {f"pmid:{_pmid_digits(current.iloc[0].get('pmid'))}",
+                       f"doi:{_doi_key(current.iloc[0].get('doi'))}"} - {"pmid:", "doi:"}
+        if not (ids & current_ids) and any((i, decision.study_id) in existing for i in ids):
+            raise ValueError(f"PMID {decision.pmid} is already linked to {decision.study_id}")
+        changes[row_id] = {c: _plain(getattr(row, c)) for c in columns}
+        funders = []
+        for study in _as_list(current.iloc[0]["studyId"]):
+            funders += [f for f in studies.get(study, {}).get("funding_agency", []) if f not in funders]
+        if funders:
+            changes[row_id]["fundingAgency"] = _fit_list("fundingAgency", funders)
+    return changes
+
+
+def _row_holding(target: pd.DataFrame, paper: str, study_id: str) -> pd.DataFrame:
+    """The one row linked to study_id whose PMID or DOI is paper ('pmid:<n>' / 'doi:<doi>')."""
+    kind, value = paper.split(":", 1)
+    held = target["pmid"].map(_pmid_digits) if kind == "pmid" else target["doi"].map(_doi_key)
+    linked = target["studyId"].map(lambda ids: study_id in _as_list(ids))
+    found = target[(held == value) & linked]
+    label = f"{kind.upper()}:{value}"
+    if found.empty:
+        raise ValueError(f"No row linked to {study_id} holds {label} in the table "
+                         f"that this relationship goes to; not replacing anything")
+    if len(found) > 1:
+        rows = ", ".join(str(int(r)) for r in found["ROW_ID"])
+        raise ValueError(f"Rows {rows} are all linked to {study_id} and hold {label}; fix them by hand")
+    return found
+
+
+def apply_replacements(syn, table_id: str, changes: Dict[int, Dict], action: str) -> int:
+    """Overwrite the paper columns of existing rows, snapshotted. Returns rows changed."""
+    if not changes:
+        return 0
+    from synapseclient import PartialRowset
+    columns = sorted({c for change in changes.values() for c in change})
+    ids = ",".join(str(i) for i in changes)
+    with snapshots_around(syn, table_id, action):
+        # Quoted: "year" is an SQL keyword
+        quoted = ", ".join(f'"{c}"' for c in columns)
+        fresh = syn.tableQuery(f"SELECT {quoted} FROM {table_id} WHERE ROW_ID IN ({ids})")
+        syn.store(PartialRowset.from_mapping(changes, fresh))
+    logger.info(f"Fixed {len(changes)} rows in place in {table_id}")
+    return len(changes)
 
 
 def describe(plan: Dict[str, Dict]) -> str:
@@ -165,4 +269,30 @@ def describe(plan: Dict[str, Dict]) -> str:
                          f"authors={len(row.author)} funders={row.fundingAgency}")
         for row_id, change in p["merges"].items():
             lines.append(f"{p['table']} ROW_ID {row_id}: add studies {change['added']}")
+        for row_id, change in p.get("replacements", {}).items():
+            lines.append(f"{p['table']} ROW_ID {row_id} fixed in place: {change['pmid']} "
+                         f"{str(change['title'])[:70]!r} journal={change['journal']!r} year={change['year']} "
+                         f"doi={change['doi']} authors={len(change['author'] or [])}")
     return "\n".join(lines) or "Nothing to add: every reviewed pair is already in the tables"
+
+
+def plan_funder_fixes(target: pd.DataFrame, studies: Dict[str, Dict], row_ids: Iterable[int]) -> Dict[int, Dict]:
+    """
+    {ROW_ID: {"fundingAgency": [...]}} setting each row's funders to its studies' funders.
+
+    Rows with no study, whose studies have no funders, or that already match
+    are skipped.
+    """
+    changes = {}
+    for row_id in row_ids:
+        current = target[target["ROW_ID"].astype(int) == int(row_id)]
+        if current.empty:
+            logger.warning(f"ROW_ID {row_id} is not in the table; skipping it")
+            continue
+        funders = []
+        for study in _as_list(current.iloc[0]["studyId"]):
+            funders += [f for f in studies.get(study, {}).get("funding_agency", []) if f not in funders]
+        funders = _fit_list("fundingAgency", funders)
+        if funders and set(funders) != set(_as_list(current.iloc[0]["fundingAgency"])):
+            changes[int(row_id)] = {"fundingAgency": funders}
+    return changes

@@ -14,6 +14,8 @@ PMID:40744913 (FGFR glioma, syn5698493): secondary
 
 Relationships: `primary` goes to the publications table (syn16857542); `secondary`, `review` and `mention` go to Cited By (syn78484103).
 
+To **fix an existing row** rather than add one, end the line with `replaces PMID:<PMID>` naming the paper the study's row holds now, e.g. `PMID:36283200 (syn74287631): primary, replaces PMID:34711849`. Placeholder rows (no PMID, a dataset DOI, the study name as title, or author "Unknown") are named by their DOI: `replaces DOI:<doi>`. See what a study's rows hold with `SELECT * FROM syn16857542 WHERE studyId HAS ('<study>')`. The paper columns change and `fundingAgency` is reset to the study's funders. syn16857542's `fundingAgency` column defaults to `[NTAP, CTF, GFF]`, so a hand-entered row with exactly those funders is suspect. Exactly one row linked to the study must hold that paper, and rerunning the same line refreshes it.
+
 ## Steps
 
 1. **Get the decisions.** Read the reply with `gh api repos/nf-osi/synapse-miner/issues/comments/<id> --jq .body` and save it to a scratch file. Confirm every line parsed. The command logs one `Decision:` line per pair, and a line it can't parse is silently skipped.
@@ -31,6 +33,10 @@ Relationships: `primary` goes to the publications table (syn16857542); `secondar
 
    Every write is snapshotted before and after (`synapse_safety.py`). Rerunning is a no-op because existing paper-study pairs are skipped.
 4. **Report on the issue.** List each row added (table, PMID, study, relationship) and the snapshot versions, and anything left for a person, such as a preprint with a single author. Close the issue if every pair is handled.
+
+## Funders
+
+To reset other rows' funders to their studies' funders, use `synapse-miner fix-funders <ROW_ID>... --dry-run`, then rerun without `--dry-run`. This fixes rows that hold the column default. Find candidates by comparing each row's `fundingAgency` with its studies' funders in syn52694652.
 
 ## Don't
 

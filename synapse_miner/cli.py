@@ -355,6 +355,22 @@ def main() -> None:
             help="Synapse Personal Access Token (can also use SERVICE_TOKEN or SYNAPSE_PAT env var)"
         )
 
+    # Reset rows' funders to their studies' funders
+    if SYNAPSE_AVAILABLE:
+        funders_parser = subparsers.add_parser(
+            "fix-funders",
+            help="Set fundingAgency on portal publication rows to their studies' funders"
+        )
+        funders_parser.add_argument("row_ids", nargs="+", type=int, help="ROW_IDs to fix")
+        funders_parser.add_argument("--table", default="syn16857542",
+                                    help="Publications or Cited By table (default: syn16857542)")
+        funders_parser.add_argument("--studies-view", default="syn52677631",
+                                    help="Portal studies view (default: syn52677631)")
+        funders_parser.add_argument("--reason", default="funders reset to the studies' funders",
+                                    help="Why, for the snapshot comments")
+        funders_parser.add_argument("--dry-run", action="store_true", help="Show the changes without writing")
+        funders_parser.add_argument("--synapse-pat", help="Synapse Personal Access Token")
+
     # Search beyond the Europe PMC open-access download
     if SYNAPSE_AVAILABLE:
         search_parser = subparsers.add_parser(
@@ -465,6 +481,9 @@ def main() -> None:
 
         elif args.command == "add-reviewed" and SYNAPSE_AVAILABLE:
             run_add_reviewed(args, logger)
+
+        elif args.command == "fix-funders" and SYNAPSE_AVAILABLE:
+            run_fix_funders(args, logger)
 
         else:
             parser.print_help()
@@ -747,6 +766,32 @@ def run_add_reviewed(args, logger):
     )
     print(describe(plan))
     logger.info("Dry run: nothing written" if args.dry_run else "Reviewed pairs written")
+
+
+def run_fix_funders(args, logger):
+    """Set fundingAgency on publication rows to their studies' funders."""
+    import os
+    from synapse_miner.portal_tables import load_table_rows
+    from synapse_miner.reviewed import apply_replacements, plan_funder_fixes
+    from synapse_miner.utils.study_resolver import load_studies
+
+    token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+    syn = SynapseUploader(pat=token).syn
+    target = load_table_rows(syn, args.table)
+    changes = plan_funder_fixes(target, load_studies(syn, args.studies_view), args.row_ids)
+    for row_id in args.row_ids:
+        found = target[target["ROW_ID"].astype(int) == row_id]
+        if found.empty:
+            continue
+        before = found.iloc[0]
+        after = changes.get(row_id, {}).get("fundingAgency")
+        print(f"ROW_ID {row_id} {before['pmid']} studies={list(before['studyId'])}: "
+              f"{list(before['fundingAgency'])} -> {after if after else 'unchanged'}")
+    if args.dry_run or not changes:
+        logger.info("Dry run: nothing written" if args.dry_run else "Nothing to change")
+        return
+    apply_replacements(syn, args.table, changes,
+                       f"fix-funders rows {', '.join(map(str, changes))}: {args.reason}")
 
 
 def run_classify_workflow(args, logger):

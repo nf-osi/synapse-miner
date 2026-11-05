@@ -165,7 +165,7 @@ PMID:40585258 (liquid biopsy, syn51115812): primary
 PMID:40744913 (FGFR glioma, syn5698493): secondary
 ```
 
-The relationship is `primary`, `secondary`, `review` or `mention`; anything else on the line is ignored. Then run the **Add reviewed publications** workflow (Actions tab, `add-reviewed.yml`) with the reply's link. Tick `dry_run` first to see the rows without writing. The workflow replies on the issue with what it added.
+The relationship is `primary`, `secondary`, `review` or `mention`; anything else on the line is ignored. To fix an existing row instead of adding one (e.g. a placeholder holding a dataset DOI), end the line with `replaces PMID:<PMID>`, naming the paper the study's row holds now: `PMID:36283200 (syn74287631): primary, replaces PMID:34711849`. For a placeholder row with no PMID, use its DOI instead: `replaces DOI:10.7937/TCIA.9YTJ-5Q73`. The row's paper columns (DOI, journal, title, year, PMID, authors, type) are overwritten, `fundingAgency` is set to its studies' funders (the column defaults to NTAP, CTF, GFF, so hand-entered rows often hold that by mistake), and its study, disease and manifestation columns are kept. Exactly one row linked to that study must hold the named paper. Rerunning the same line on the same row refreshes it. Then run the **Add reviewed publications** workflow (Actions tab, `add-reviewed.yml`) with the reply's link. Tick `dry_run` first to see the rows without writing. The workflow replies on the issue with what it added.
 
 Or run it locally (needs write access to both tables):
 
@@ -184,6 +184,16 @@ Rows are built the same way as the workflow's:
 - every write is snapshotted.
 
 A preprint is added as the preprint; the weekly run swaps in its published version once PubMed links one.
+
+#### Fixing funders (`synapse-miner fix-funders`)
+
+syn16857542's `fundingAgency` column defaults to `[NTAP, CTF, GFF]`, so a row entered without funders gets those three. To set rows' funders to their studies' funders (from the studies view):
+
+```bash
+synapse-miner fix-funders 422 423 424 --dry-run   # drop --dry-run to write; --table syn78484103 for Cited By
+```
+
+Rows with no study, or whose studies have no funders, are left alone; the write is snapshotted.
 
 #### Synapse safety
 
