@@ -29,7 +29,7 @@ import pandas as pd
 
 from .portal_tables import (
     CITED_BY_COLUMNS, CITED_BY_RELATIONSHIPS, PRIMARY_RELATIONSHIPS, PUBLICATION_COLUMNS,
-    append_rows, apply_merges, build_rows, group_by_paper, load_pair_keys, load_table_rows,
+    append_rows, apply_merges, build_rows, copy_cited_by_papers, group_by_paper, load_pair_keys, load_table_rows,
     plan_writes, _as_list, _doi_key, _fit_list, _pmid_digits,
 )
 from .utils.synapse_safety import snapshots_around
@@ -181,6 +181,10 @@ def add_reviewed(syn, decisions: List[Decision], evidence: str, epmc, studies: D
                     f"add-reviewed adds {len(p['new'])} rows: {source}")
         apply_replacements(syn, p["table"], p["replacements"],
                            f"add-reviewed fixes rows {', '.join(map(str, p['replacements']))}: {source}")
+    # Cited By papers are listed in the publications table too, without study links
+    plan["publications"]["unlinked"] = copy_cited_by_papers(
+        syn, publications_table, cited_by_table,
+        f"add-reviewed lists new Cited By papers without study links: reviewed pairs ({evidence})")
     return plan
 
 
@@ -269,6 +273,9 @@ def describe(plan: Dict[str, Dict]) -> str:
                          f"authors={len(row.author)} funders={row.fundingAgency}")
         for row_id, change in p["merges"].items():
             lines.append(f"{p['table']} ROW_ID {row_id}: add studies {change['added']}")
+        for row in p.get("unlinked", pd.DataFrame()).itertuples(index=False):
+            lines.append(f"{p['table']} new row without study links (Cited By paper): {row.pmid} "
+                         f"{str(row.title)[:70]!r} type={row.publicationType}")
         for row_id, change in p.get("replacements", {}).items():
             lines.append(f"{p['table']} ROW_ID {row_id} fixed in place: {change['pmid']} "
                          f"{str(change['title'])[:70]!r} journal={change['journal']!r} year={change['year']} "

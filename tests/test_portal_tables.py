@@ -351,3 +351,68 @@ def test_cited_by_only_merges_rows_with_the_same_relationship():
     new, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=True)
     assert merges == {}
     assert new.iloc[0]["studyId"] == ["syn11638893"]
+
+
+# Cited By papers are listed in the publications table without study links (issue #30)
+from synapse_miner.portal_tables import copy_cited_by_papers, unlinked_publication_rows  # noqa: E402
+
+
+def _cited_by_table(rows):
+    columns = ["pmid", "doi", "title", "year", "author", "fundingAgency", "studyId", "studyName",
+               "publicationType", "confidence"]
+    return pd.DataFrame(rows, columns=columns)
+
+
+CITED = _cited_by_table([
+    ["PMID:38136356", "https://doi.org/10.3390/cancers15245811", "A", 2023, '["Jane Doe"]', '["NTAP"]',
+     '["syn4939906"]', '["syn4939906"]', "secondary", "high"],
+    ["PMID:39857962", "https://doi.org/10.3390/cancers17020180", "B", 2025, '[]', '["NTAP"]',
+     '["syn11638893"]', '["syn11638893"]', "mention", "high"],
+    # Same paper as B under another relationship: one row, the secondary one
+    ["PMID:39857962", "https://doi.org/10.3390/cancers17020180", "B", 2025, '[]', '["CTF"]',
+     '["syn4984604"]', '["syn4984604"]', "secondary", "medium"],
+    # Already in the publications table, by DOI
+    ["PMID:35741605", "https://doi.org/10.3390/brainsci12060720", "C", 2022, '[]', '["CTF"]',
+     '["syn4939874"]', '["syn4939874"]', "secondary", "high"],
+])
+PUBLICATIONS = pd.DataFrame({"pmid": ["PMID:", "PMID:33591953"],
+                             "doi": ["https://doi.org/10.3390/BRAINSCI12060720", None]})
+
+
+def test_cited_by_papers_are_listed_without_study_links():
+    rows = unlinked_publication_rows(CITED, PUBLICATIONS)
+    assert list(rows["pmid"]) == ["PMID:38136356", "PMID:39857962"]
+    assert all(ids == [] for ids in rows["studyId"]) and all(ids == [] for ids in rows["studyName"])
+    assert list(rows["publicationType"]) == ["secondary", "secondary"]
+    assert rows.iloc[0]["author"] == ["Jane Doe"]
+    assert rows.iloc[1]["fundingAgency"] == ["CTF"]
+    upload = _for_upload(rows, PUBLICATION_COLUMNS)
+    assert list(upload.columns) == PUBLICATION_COLUMNS
+    assert upload.iloc[0]["studyId"] == "[]" and upload.iloc[0]["author"] == '["Jane Doe"]'
+
+
+def test_copy_cited_by_papers_appends_once_with_snapshots(monkeypatch):
+    monkeypatch.setattr("synapseclient.Table", lambda table_id, df: ("table", table_id, list(df.columns)))
+    class Syn(FakeSyn):
+        def tableQuery(self, sql):
+            self.calls.append(("query", sql))
+            return FakeQuery(CITED if "syn78484103" in sql else PUBLICATIONS)
+
+    syn = Syn()
+    rows = copy_cited_by_papers(syn, "syn16857542", "syn78484103", "test", dry_run=True)
+    assert len(rows) == 2 and not any(c[0] in ("store", "snapshot") for c in syn.calls)
+    copy_cited_by_papers(syn, "syn16857542", "syn78484103", "test")
+    assert [c[0] for c in syn.calls if c[0] != "query"] == ["snapshot", "store", "snapshot"]
+    assert next(c[1] for c in syn.calls if c[0] == "store") == ("table", "syn16857542", PUBLICATION_COLUMNS)
+
+
+def test_primary_study_joining_an_unlinked_cited_by_row_makes_it_primary():
+    rows = build_primary(pd.DataFrame([_row("syn11638893", "primary")]), STUDIES)
+    target = _target([[9, "PMID:33591953", None, [], [], ["NTAP"], "secondary"]])
+    new, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=False)
+    assert new.empty
+    assert merges[9]["studyId"] == ["syn11638893"] and merges[9]["publicationType"] == "primary"
+    # A curated row with no publicationType keeps it
+    target = _target([[9, "PMID:33591953", None, [], [], ["NTAP"], None]])
+    _, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=False)
+    assert "publicationType" not in merges[9]
