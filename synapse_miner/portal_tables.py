@@ -7,7 +7,9 @@ Add classified papers to the NF Data Portal publication tables.
 
 Both tables share the publications table's columns, so study pages show
 them with the same publication cards filtered on studyId; Cited By adds a
-few columns at the end. Rows are one per (paper, study) and are only ever
+few columns at the end. Cited By papers are also listed in the publications
+table, without study links, since they are not outputs of a portal study
+(see copy_cited_by_papers). Rows are one per (paper, study) and are only ever
 appended: a pair already in either table is skipped, so hand edits and
 curated rows are never changed, and every write is snapshotted before and
 after (see utils/synapse_safety.py).
@@ -33,6 +35,10 @@ CITED_BY_RELATIONSHIPS = ("secondary", "review", "mention")
 # Primary pairs go into the curated publications table only when the wording
 # was explicit (high) or backed by a study lead plus a deposit statement (medium)
 PRIMARY_CONFIDENCE = ("high", "medium")
+# Funder for Cited By papers listed in the publications table without study
+# links: the cited studies' funders did not fund the paper, and an empty value
+# would take the column default ([NTAP, CTF, GFF])
+EXTERNAL_FUNDING = "Not Applicable (External Study)"
 
 # Same names, types and limits as syn16857542 (publicationType is also faceted
 # here, to filter secondary/review/mention), then columns specific to Cited By
@@ -295,9 +301,16 @@ def plan_writes(rows: pd.DataFrame, target: pd.DataFrame, existing: Set[Tuple[st
             if take:
                 merged["studyId"] += take
                 merged["studyName"] += take
-                merged["fundingAgency"] = _union([merged["fundingAgency"], row.fundingAgency],
+                # A study joining a row listed without studies replaces its placeholder funder
+                funders = [f for f in merged["fundingAgency"] if f != EXTERNAL_FUNDING]
+                merged["fundingAgency"] = _union([funders, row.fundingAgency],
                                                   _LIMITS["fundingAgency"]["maximumListLength"])
                 merged["added"] += take
+                # A Cited By paper listed without studies becomes primary
+                # once a study's primary pair joins its row
+                if (not match_relationship and row.publicationType in PRIMARY_RELATIONSHIPS
+                        and getattr(current, "publicationType", None) in CITED_BY_RELATIONSHIPS):
+                    merged["publicationType"] = row.publicationType
                 merges[row_id] = merged
                 studies = studies[len(take):]
             if not studies:
@@ -313,14 +326,19 @@ def plan_writes(rows: pd.DataFrame, target: pd.DataFrame, existing: Set[Tuple[st
 
 
 def apply_merges(syn, table_id: str, merges: Dict[int, Dict], action: str) -> int:
-    """Add studies to existing rows (studyId, studyName, fundingAgency only), snapshotted. Returns rows changed."""
+    """
+    Add studies to existing rows (studyId, studyName, fundingAgency, and
+    publicationType when it changes), snapshotted. Returns rows changed.
+    """
     if not merges:
         return 0
     from synapseclient import PartialRowset
     changes = {row_id: {k: v for k, v in m.items() if k != "added"} for row_id, m in merges.items()}
     ids = ",".join(str(i) for i in changes)
+    columns = ["studyId", "studyName", "fundingAgency"]
+    columns += [c for c in ("publicationType",) if any(c in m for m in changes.values())]
     with snapshots_around(syn, table_id, action):
-        fresh = syn.tableQuery(f"SELECT studyId, studyName, fundingAgency FROM {table_id} WHERE ROW_ID IN ({ids})")
+        fresh = syn.tableQuery(f"SELECT {', '.join(columns)} FROM {table_id} WHERE ROW_ID IN ({ids})")
         syn.store(PartialRowset.from_mapping(changes, fresh))
     logger.info(f"Added studies to {len(changes)} existing rows in {table_id}")
     return len(changes)
@@ -392,6 +410,64 @@ def append_rows(syn, table_id: str, df: pd.DataFrame, columns: List[str], action
         syn.store(Table(table_id, _for_upload(df, columns)))
     logger.info(f"Appended {len(df)} rows to {table_id}")
     return len(df)
+
+
+def unlinked_publication_rows(cited_by: pd.DataFrame, publications: pd.DataFrame) -> pd.DataFrame:
+    """
+    Publications-table rows for Cited By papers not in the publications table yet.
+
+    Cited By papers are listed in the publications table too, but without
+    study links (studyId and studyName empty): they are not outputs of a
+    portal study. A paper is skipped when any publications-table row already
+    has its PMID or DOI. A paper in Cited By under several relationships
+    gets one row, with the first of secondary, review, mention. Disease focus
+    and manifestation are copied; fundingAgency is EXTERNAL_FUNDING, since
+    Cited By's funders are the cited studies' funders, not the paper's.
+
+    Args:
+        cited_by: Cited By rows (any of CITED_BY_COLUMNS)
+        publications: Existing publications-table rows (pmid and doi)
+
+    Returns:
+        DataFrame with CITED_BY_COLUMNS (upload with PUBLICATION_COLUMNS)
+    """
+    have = {k for r in publications.itertuples(index=False)
+            for k in (f"pmid:{_pmid_digits(r.pmid)}", f"doi:{_doi_key(r.doi)}") if k not in ("pmid:", "doi:")}
+    order = {rel: i for i, rel in enumerate(CITED_BY_RELATIONSHIPS)}
+    rows, seen = [], set()
+    ranked = cited_by.assign(_order=cited_by["publicationType"].map(order).fillna(len(order)))
+    for row in ranked.sort_values("_order", kind="stable").to_dict("records"):
+        ids = {k for k in (f"pmid:{_pmid_digits(row.get('pmid'))}", f"doi:{_doi_key(row.get('doi'))}")
+               if k not in ("pmid:", "doi:")}
+        if not ids or ids & (have | seen):
+            continue
+        seen |= ids
+        out = {c: row.get(c) for c in CITED_BY_COLUMNS}
+        for spec in CITED_BY_SCHEMA:
+            if spec["columnType"].endswith("_LIST"):
+                out[spec["name"]] = _as_list(out[spec["name"]])
+        out.update({"studyId": [], "studyName": [], "fundingAgency": [EXTERNAL_FUNDING]})
+        rows.append(out)
+    df = pd.DataFrame(rows, columns=CITED_BY_COLUMNS)
+    df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
+    return df
+
+
+def copy_cited_by_papers(syn, publications_table: str, cited_by_table: str, action: str,
+                         dry_run: bool = False) -> pd.DataFrame:
+    """
+    Append Cited By papers missing from the publications table to it, without study links.
+
+    Returns:
+        The rows appended (or that would be, on a dry run)
+    """
+    cited_by = syn.tableQuery(f"SELECT * FROM {cited_by_table}").asDataFrame(rowIdAndVersionInIndex=False)
+    publications = syn.tableQuery(f"SELECT pmid, doi FROM {publications_table}").asDataFrame()
+    rows = unlinked_publication_rows(cited_by, publications)
+    logger.info(f"{len(rows)} Cited By papers are not in {publications_table} yet")
+    if not dry_run:
+        append_rows(syn, publications_table, rows, PUBLICATION_COLUMNS, action)
+    return rows
 
 
 def create_cited_by_table(syn, parent_id: str, name: str = "Portal - Cited By") -> str:

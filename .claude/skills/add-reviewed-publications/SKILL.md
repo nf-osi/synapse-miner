@@ -12,7 +12,7 @@ PMID:40585258 (liquid biopsy, syn51115812): primary
 PMID:40744913 (FGFR glioma, syn5698493): secondary
 ```
 
-Relationships: `primary` goes to the publications table (syn16857542); `secondary`, `review` and `mention` go to Cited By (syn78484103).
+Relationships: `primary` goes to the publications table (syn16857542); `secondary`, `review` and `mention` go to Cited By (syn78484103). A new Cited By paper is also listed in the publications table without study links (`studyId`/`studyName` empty, `fundingAgency` "Not Applicable (External Study)"); the write step does this itself (`synapse-miner copy-cited-by` does it on its own).
 
 To **fix an existing row** rather than add one, end the line with `replaces PMID:<PMID>` naming the paper the study's row holds now, e.g. `PMID:36283200 (syn74287631): primary, replaces PMID:34711849`. Placeholder rows (no PMID, a dataset DOI, the study name as title, or author "Unknown") are named by their DOI: `replaces DOI:<doi>`. See what a study's rows hold with `SELECT * FROM syn16857542 WHERE studyId HAS ('<study>')`. The paper columns change and `fundingAgency` is reset to the study's funders. syn16857542's `fundingAgency` column defaults to `[NTAP, CTF, GFF]`, so a hand-entered row with exactly those funders is suspect. Exactly one row linked to the study must hold that paper, and rerunning the same line refreshes it.
 

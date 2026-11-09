@@ -371,6 +371,19 @@ def main() -> None:
         funders_parser.add_argument("--dry-run", action="store_true", help="Show the changes without writing")
         funders_parser.add_argument("--synapse-pat", help="Synapse Personal Access Token")
 
+    # List Cited By papers in the publications table without study links
+    if SYNAPSE_AVAILABLE:
+        copy_parser = subparsers.add_parser(
+            "copy-cited-by",
+            help="Add Cited By papers missing from the publications table to it, without study links"
+        )
+        copy_parser.add_argument("--publications-table", default="syn16857542",
+                                 help="Portal publications table (default: syn16857542)")
+        copy_parser.add_argument("--cited-by-table", default="syn78484103",
+                                 help="Portal Cited By table (default: syn78484103)")
+        copy_parser.add_argument("--dry-run", action="store_true", help="Show the rows without writing")
+        copy_parser.add_argument("--synapse-pat", help="Synapse Personal Access Token")
+
     # Search beyond the Europe PMC open-access download
     if SYNAPSE_AVAILABLE:
         search_parser = subparsers.add_parser(
@@ -484,6 +497,9 @@ def main() -> None:
 
         elif args.command == "fix-funders" and SYNAPSE_AVAILABLE:
             run_fix_funders(args, logger)
+
+        elif args.command == "copy-cited-by" and SYNAPSE_AVAILABLE:
+            run_copy_cited_by(args, logger)
 
         else:
             parser.print_help()
@@ -794,12 +810,27 @@ def run_fix_funders(args, logger):
                        f"fix-funders rows {', '.join(map(str, changes))}: {args.reason}")
 
 
+def run_copy_cited_by(args, logger):
+    """Add Cited By papers missing from the publications table to it, without study links."""
+    import os
+    from synapse_miner.portal_tables import copy_cited_by_papers
+
+    token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
+    syn = SynapseUploader(pat=token).syn
+    rows = copy_cited_by_papers(syn, args.publications_table, args.cited_by_table,
+                                "copy-cited-by lists Cited By papers without study links", dry_run=args.dry_run)
+    for row in rows.itertuples(index=False):
+        print(f"{row.pmid or row.doi} ({row.publicationType}, {row.year}): {str(row.title)[:90]}")
+    logger.info("Dry run: nothing written" if args.dry_run else f"Added {len(rows)} rows")
+
+
 def run_classify_workflow(args, logger):
     """Classify mined papers by how they relate to NF Data Portal studies."""
     import os
+    import pandas as pd
     from synapse_miner.portal_tables import (
         CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, apply_merges, build_cited_by, build_primary,
-        create_cited_by_table, left_out_key, load_pair_keys, load_reported, load_table_rows,
+        copy_cited_by_papers, create_cited_by_table, left_out_key, load_pair_keys, load_reported, load_table_rows,
         not_added, plan_writes, review_issue, save_reported, update_preprint_rows,
     )
     from synapse_miner.classify import classify_publications
@@ -874,6 +905,14 @@ def run_classify_workflow(args, logger):
             merged[table_id] = merges
             append_rows(syn, table_id, new_rows, columns, f"classify adds {len(new_rows)} {label} rows")
             additions[table_id] = new_rows
+        # Cited By papers are listed in the publications table too, without study links
+        if cited_by_table and args.add_primary_publications:
+            copied = copy_cited_by_papers(syn, args.publications_table, cited_by_table,
+                                          "classify lists new Cited By papers without study links")
+            if not copied.empty:
+                additions[args.publications_table] = pd.concat(
+                    [additions.get(args.publications_table, pd.DataFrame(columns=CITED_BY_COLUMNS)), copied],
+                    ignore_index=True)
     except Exception as e:
         logger.error(f"Failed to update the portal publication tables: {e}")
         failed = True
