@@ -385,7 +385,8 @@ def test_cited_by_papers_are_listed_without_study_links():
     assert all(ids == [] for ids in rows["studyId"]) and all(ids == [] for ids in rows["studyName"])
     assert list(rows["publicationType"]) == ["secondary", "secondary"]
     assert rows.iloc[0]["author"] == ["Jane Doe"]
-    assert rows.iloc[1]["fundingAgency"] == ["CTF"]
+    # Not the cited studies' funders, and not empty (which takes the column default)
+    assert all(f == ["Not Applicable (External Study)"] for f in rows["fundingAgency"])
     upload = _for_upload(rows, PUBLICATION_COLUMNS)
     assert list(upload.columns) == PUBLICATION_COLUMNS
     assert upload.iloc[0]["studyId"] == "[]" and upload.iloc[0]["author"] == '["Jane Doe"]'
@@ -408,10 +409,11 @@ def test_copy_cited_by_papers_appends_once_with_snapshots(monkeypatch):
 
 def test_primary_study_joining_an_unlinked_cited_by_row_makes_it_primary():
     rows = build_primary(pd.DataFrame([_row("syn11638893", "primary")]), STUDIES)
-    target = _target([[9, "PMID:33591953", None, [], [], ["NTAP"], "secondary"]])
+    target = _target([[9, "PMID:33591953", None, [], [], ["Not Applicable (External Study)"], "secondary"]])
     new, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=False)
     assert new.empty
     assert merges[9]["studyId"] == ["syn11638893"] and merges[9]["publicationType"] == "primary"
+    assert merges[9]["fundingAgency"] == ["NTAP", "NFRI"]
     # A curated row with no publicationType keeps it
     target = _target([[9, "PMID:33591953", None, [], [], ["NTAP"], None]])
     _, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=False)

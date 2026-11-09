@@ -35,6 +35,10 @@ CITED_BY_RELATIONSHIPS = ("secondary", "review", "mention")
 # Primary pairs go into the curated publications table only when the wording
 # was explicit (high) or backed by a study lead plus a deposit statement (medium)
 PRIMARY_CONFIDENCE = ("high", "medium")
+# Funder for Cited By papers listed in the publications table without study
+# links: the cited studies' funders did not fund the paper, and an empty value
+# would take the column default ([NTAP, CTF, GFF])
+EXTERNAL_FUNDING = "Not Applicable (External Study)"
 
 # Same names, types and limits as syn16857542 (publicationType is also faceted
 # here, to filter secondary/review/mention), then columns specific to Cited By
@@ -297,7 +301,9 @@ def plan_writes(rows: pd.DataFrame, target: pd.DataFrame, existing: Set[Tuple[st
             if take:
                 merged["studyId"] += take
                 merged["studyName"] += take
-                merged["fundingAgency"] = _union([merged["fundingAgency"], row.fundingAgency],
+                # A study joining a row listed without studies replaces its placeholder funder
+                funders = [f for f in merged["fundingAgency"] if f != EXTERNAL_FUNDING]
+                merged["fundingAgency"] = _union([funders, row.fundingAgency],
                                                   _LIMITS["fundingAgency"]["maximumListLength"])
                 merged["added"] += take
                 # A Cited By paper listed without studies becomes primary
@@ -414,7 +420,9 @@ def unlinked_publication_rows(cited_by: pd.DataFrame, publications: pd.DataFrame
     study links (studyId and studyName empty): they are not outputs of a
     portal study. A paper is skipped when any publications-table row already
     has its PMID or DOI. A paper in Cited By under several relationships
-    gets one row, with the first of secondary, review, mention.
+    gets one row, with the first of secondary, review, mention. Disease focus
+    and manifestation are copied; fundingAgency is EXTERNAL_FUNDING, since
+    Cited By's funders are the cited studies' funders, not the paper's.
 
     Args:
         cited_by: Cited By rows (any of CITED_BY_COLUMNS)
@@ -438,7 +446,7 @@ def unlinked_publication_rows(cited_by: pd.DataFrame, publications: pd.DataFrame
         for spec in CITED_BY_SCHEMA:
             if spec["columnType"].endswith("_LIST"):
                 out[spec["name"]] = _as_list(out[spec["name"]])
-        out.update({"studyId": [], "studyName": []})
+        out.update({"studyId": [], "studyName": [], "fundingAgency": [EXTERNAL_FUNDING]})
         rows.append(out)
     df = pd.DataFrame(rows, columns=CITED_BY_COLUMNS)
     df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")

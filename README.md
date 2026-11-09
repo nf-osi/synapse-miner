@@ -137,7 +137,7 @@ Each output row is one (paper, study) pair with the label, a confidence (`high`/
 
 A paper that is primary for one study and secondary for another gets a row in each table, each under its own study. Both tables share the publications table's columns, so study pages show them with the same publication cards filtered on `studyId`; Cited By adds `pmcid`, `isPreprint`, `confidence`, `citedSynapseIds` and `evidence` at the end.
 
-Every Cited By paper is also listed in the publications table **without study links** (`studyId` and `studyName` empty, `publicationType` secondary/review/mention), since it is not an output of a portal study. The weekly run and `add-reviewed` add these rows for new Cited By papers; a paper already in the publications table is left as it is. If a study's primary pair for that paper is added later, the study joins the row and its `publicationType` becomes `primary`. To add any missing ones by hand:
+Every Cited By paper is also listed in the publications table **without study links** (`studyId` and `studyName` empty, `fundingAgency` "Not Applicable (External Study)", `publicationType` secondary/review/mention), since it is not an output of a portal study. Disease focus and manifestation are copied from Cited By; funders are not, since they are the cited studies' funders (and an empty value would take the column default). The weekly run and `add-reviewed` add these rows for new Cited By papers; a paper already in the publications table is left as it is. If a study's primary pair for that paper is added later, the study joins the row, its `publicationType` becomes `primary` and its funders replace the placeholder. To add any missing ones by hand:
 
 ```bash
 synapse-miner copy-cited-by --dry-run   # drop --dry-run to write
