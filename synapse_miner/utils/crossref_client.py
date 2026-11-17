@@ -15,6 +15,8 @@ from typing import Dict, Optional
 
 import requests
 
+from .doi import bare_doi
+
 logger = logging.getLogger(__name__)
 
 CROSSREF_WORKS = "https://api.crossref.org/works/"
@@ -61,7 +63,7 @@ class CrossrefClient:
         """The journal's name as the publisher registers it, or None."""
         if not doi:
             return None
-        key = str(doi).strip().lower().replace("https://doi.org/", "")
+        key = bare_doi(doi).lower()
         if key not in self._cache:
             try:
                 response = self.session.get(CROSSREF_WORKS + key, timeout=self.timeout)

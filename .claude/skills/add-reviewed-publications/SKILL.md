@@ -41,4 +41,5 @@ To reset other rows' funders to their studies' funders, use `synapse-miner fix-f
 ## Don't
 
 - Don't write rows by hand with `syn.store`. Use the command so de-duplication, `studyName` IDs, DOI links and snapshots are applied.
+- If a row must be edited by hand, write its DOI as `https://doi.org/<doi>` (or the bare DOI), never `https://www.doi.org/` or `https://dx.doi.org/`: the portal card's "Cite As" button only strips `https://doi.org/`, so other forms break citations. The README's "Row formats" table lists the expected forms.
 - Don't delete rows. Automation never deletes; list anything to remove on the issue for a curator.

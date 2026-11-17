@@ -28,6 +28,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 import pandas as pd
 
 from .utils.crossref_client import clean_journal_title
+from .utils.doi import bare_doi
 from .utils.europepmc_client import author_names
 from .utils.synapse_safety import run_url, snapshots_around
 
@@ -135,11 +136,15 @@ def _plain_title(value) -> Optional[str]:
 
 
 def doi_url(value) -> Optional[str]:
-    """DOI as an https://doi.org/ link, the form the portal cards render as a link."""
-    if _missing(value):
-        return None
-    doi = re.sub(r"^(https?://(dx\.)?doi\.org/|doi:\s*)", "", str(value).strip(), flags=re.I)
-    return f"https://doi.org/{doi}"
+    """
+    DOI as an https://doi.org/ link, the form written to the portal tables.
+
+    Cards render it as a link, and their "Cite As" button strips exactly
+    "https://doi.org/" before asking citation.doi.org, so other forms (e.g.
+    https://www.doi.org/...) break citations.
+    """
+    doi = bare_doi(value)
+    return f"https://doi.org/{doi}" if doi else None
 
 
 def _fit(name: str, value) -> Optional[str]:
@@ -370,7 +375,7 @@ def _pmid_digits(value) -> str:
 
 
 def _doi_key(value) -> str:
-    return "" if _missing(value) else str(value).strip().lower().replace("https://doi.org/", "")
+    return bare_doi(value).lower()
 
 
 def _as_list(value) -> List[str]:
@@ -773,8 +778,8 @@ def review_issue(additions: Dict[str, pd.DataFrame], replaced: Optional[List[Dic
         lines += [f"### Added to [{table_id}](https://www.synapse.org/Synapse:{table_id}/tables/) ({len(df)} rows)", "",
                   "| Confidence | Relationship | Paper | Study | Evidence |", "|---|---|---|---|---|"]
         for row in ordered.itertuples(index=False):
-            paper_id = row.pmid or (f"doi:{row.doi}" if row.doi else row.pmcid)
-            link = f"https://doi.org/{row.doi}" if row.doi else f"https://europepmc.org/article/PMC/{row.pmcid}"
+            paper_id = row.pmid or (f"doi:{bare_doi(row.doi)}" if row.doi else row.pmcid)
+            link = doi_url(row.doi) if row.doi else f"https://europepmc.org/article/PMC/{row.pmcid}"
             title = str(row.title or "")[:90].replace("|", "/")
             evidence = str(row.evidence or "").split("\n")[0][:200].replace("|", "/")
             preprint = " (preprint)" if row.isPreprint else ""

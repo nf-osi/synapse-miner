@@ -150,6 +150,16 @@ The weekly run and `add-reviewed` keep the publications table in line with Cited
 synapse-miner sync-cited-by --dry-run   # drop --dry-run to write; add --add-columns the first time
 ```
 
+**Row formats.** Hand-entered rows should use the same forms the pipeline writes, which the portal cards rely on:
+
+| Column | Format | Example |
+|--------|--------|---------|
+| `doi` | `https://doi.org/` link | `https://doi.org/10.1158/1078-0432.CCR-24-3029` |
+| `pmid` | `PMID:` and the number | `PMID:40063513` |
+| `studyName`, `citedStudyId` | study Synapse IDs (entity-ID lists) | `["syn63944395"]` |
+
+Bare DOIs (`10.1158/...`) also work on the cards, but other link forms do not: the card's "Cite As" button strips exactly `https://doi.org/` before asking citation.doi.org, so `https://www.doi.org/...` or `https://dx.doi.org/...` gets a 404 and no citation. The pipeline normalizes any of these forms when it reads or writes a DOI.
+
 Rows are only ever **appended**: a (paper, study) pair already in either table (matched by PMID or DOI) is skipped, so curated rows and hand edits are never changed and nothing is deleted.
 
 ```bash

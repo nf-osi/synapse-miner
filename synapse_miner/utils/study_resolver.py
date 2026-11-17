@@ -17,6 +17,7 @@ from typing import Dict, Iterable, List, Optional
 
 import pandas as pd
 
+from .doi import bare_doi
 from .ebisearch_generator import _fetch_entity_headers_batch
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def load_tracked_publications(syn, table_id: str = PUBLICATIONS_TABLE) -> Dict[s
         if pmid:
             keys.append(f"pmid:{pmid}")
         if not pd.isna(row["doi"]) and str(row["doi"]).strip():
-            keys.append(f"doi:{str(row['doi']).strip().lower().replace('https://doi.org/', '')}")
+            keys.append(f"doi:{bare_doi(row['doi']).lower()}")
         for key in keys:
             entry = tracked.setdefault(key, {"study_ids": set(), "publication_type": set()})
             entry["study_ids"].update(_as_list(row["studyId"]))
