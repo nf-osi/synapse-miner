@@ -280,6 +280,13 @@ def test_doi_stored_as_link():
     assert doi_url("10.1126/sciadv.adg8876") == "https://doi.org/10.1126/sciadv.adg8876"
     assert doi_url("https://doi.org/10.1126/sciadv.adg8876") == "https://doi.org/10.1126/sciadv.adg8876"
     assert doi_url(None) is None
+    # Other link forms are normalized, since Cite As only strips "https://doi.org/"
+    for form in ("https://www.doi.org/10.1158/1078-0432.CCR-24-3029", "http://dx.doi.org/10.1158/1078-0432.CCR-24-3029",
+                 "doi: 10.1158/1078-0432.CCR-24-3029"):
+        assert doi_url(form) == "https://doi.org/10.1158/1078-0432.CCR-24-3029"
+    # ... and match the same paper when de-duplicating
+    from synapse_miner.portal_tables import _doi_key
+    assert _doi_key("https://www.doi.org/10.1158/X") == _doi_key("10.1158/x") == "10.1158/x"
     assert build_cited_by(DEHNER, STUDIES).iloc[0]["doi"] == "https://doi.org/10.1172/jci.insight.146351"
 
 
