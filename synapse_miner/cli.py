@@ -371,17 +371,21 @@ def main() -> None:
         funders_parser.add_argument("--dry-run", action="store_true", help="Show the changes without writing")
         funders_parser.add_argument("--synapse-pat", help="Synapse Personal Access Token")
 
-    # List Cited By papers in the publications table without study links
+    # Bring the publications table in line with Cited By
     if SYNAPSE_AVAILABLE:
         copy_parser = subparsers.add_parser(
-            "copy-cited-by",
-            help="Add Cited By papers missing from the publications table to it, without study links"
+            "sync-cited-by",
+            help="List Cited By papers in the publications table and set the studies each one cites"
         )
         copy_parser.add_argument("--publications-table", default="syn16857542",
                                  help="Portal publications table (default: syn16857542)")
         copy_parser.add_argument("--cited-by-table", default="syn78484103",
                                  help="Portal Cited By table (default: syn78484103)")
-        copy_parser.add_argument("--dry-run", action="store_true", help="Show the rows without writing")
+        copy_parser.add_argument("--studies-view", default="syn52677631",
+                                 help="Portal studies view, for the cited studies' funders (default: syn52677631)")
+        copy_parser.add_argument("--add-columns", action="store_true",
+                                 help="First add the citedStudyId and citedStudyFunder columns if missing")
+        copy_parser.add_argument("--dry-run", action="store_true", help="Show the changes without writing")
         copy_parser.add_argument("--synapse-pat", help="Synapse Personal Access Token")
 
     # Search beyond the Europe PMC open-access download
@@ -498,8 +502,8 @@ def main() -> None:
         elif args.command == "fix-funders" and SYNAPSE_AVAILABLE:
             run_fix_funders(args, logger)
 
-        elif args.command == "copy-cited-by" and SYNAPSE_AVAILABLE:
-            run_copy_cited_by(args, logger)
+        elif args.command == "sync-cited-by" and SYNAPSE_AVAILABLE:
+            run_sync_cited_by(args, logger)
 
         else:
             parser.print_help()
@@ -810,18 +814,30 @@ def run_fix_funders(args, logger):
                        f"fix-funders rows {', '.join(map(str, changes))}: {args.reason}")
 
 
-def run_copy_cited_by(args, logger):
-    """Add Cited By papers missing from the publications table to it, without study links."""
+def run_sync_cited_by(args, logger):
+    """List Cited By papers in the publications table and set the studies each one cites."""
     import os
-    from synapse_miner.portal_tables import copy_cited_by_papers
+    from synapse_miner.portal_tables import CITED_COLUMNS, add_cited_columns, sync_cited_by_papers
+    from synapse_miner.utils.study_resolver import load_studies
 
     token = args.synapse_pat or os.getenv('SERVICE_TOKEN') or os.getenv('SYNAPSE_PAT')
     syn = SynapseUploader(pat=token).syn
-    rows = copy_cited_by_papers(syn, args.publications_table, args.cited_by_table,
-                                "copy-cited-by lists Cited By papers without study links", dry_run=args.dry_run)
+    if args.add_columns:
+        if args.dry_run:
+            have = {c["name"] for c in syn.getTableColumns(args.publications_table)}
+            print(f"Would add columns: {[c for c in CITED_COLUMNS if c not in have] or 'none'}")
+        else:
+            add_cited_columns(syn, args.publications_table, "sync-cited-by adds the cited-study columns")
+    rows, changes = sync_cited_by_papers(syn, args.publications_table, args.cited_by_table,
+                                         load_studies(syn, args.studies_view),
+                                         "sync-cited-by lists Cited By papers and the studies they cite",
+                                         dry_run=args.dry_run)
     for row in rows.itertuples(index=False):
-        print(f"{row.pmid or row.doi} ({row.publicationType}, {row.year}): {str(row.title)[:90]}")
-    logger.info("Dry run: nothing written" if args.dry_run else f"Added {len(rows)} rows")
+        print(f"New row: {row.pmid or row.doi} ({row.year}): {str(row.title)[:90]}")
+    for row_id, change in changes.items():
+        print(f"ROW_ID {row_id}: {change}")
+    logger.info("Dry run: nothing written" if args.dry_run else
+                f"Added {len(rows)} rows, updated {len(changes)} rows")
 
 
 def run_classify_workflow(args, logger):
@@ -830,7 +846,7 @@ def run_classify_workflow(args, logger):
     import pandas as pd
     from synapse_miner.portal_tables import (
         CITED_BY_COLUMNS, PUBLICATION_COLUMNS, append_rows, apply_merges, build_cited_by, build_primary,
-        copy_cited_by_papers, create_cited_by_table, left_out_key, load_pair_keys, load_reported, load_table_rows,
+        sync_cited_by_papers, create_cited_by_table, left_out_key, load_pair_keys, load_reported, load_table_rows,
         not_added, plan_writes, review_issue, save_reported, update_preprint_rows,
     )
     from synapse_miner.classify import classify_publications
@@ -907,8 +923,8 @@ def run_classify_workflow(args, logger):
             additions[table_id] = new_rows
         # Cited By papers are listed in the publications table too, without study links
         if cited_by_table and args.add_primary_publications:
-            copied = copy_cited_by_papers(syn, args.publications_table, cited_by_table,
-                                          "classify lists new Cited By papers without study links")
+            copied, _ = sync_cited_by_papers(syn, args.publications_table, cited_by_table, studies,
+                                             "classify lists Cited By papers and the studies they cite")
             if not copied.empty:
                 additions[args.publications_table] = pd.concat(
                     [additions.get(args.publications_table, pd.DataFrame(columns=CITED_BY_COLUMNS)), copied],

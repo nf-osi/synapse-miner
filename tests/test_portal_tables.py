@@ -354,7 +354,9 @@ def test_cited_by_only_merges_rows_with_the_same_relationship():
 
 
 # Cited By papers are listed in the publications table without study links (issue #30)
-from synapse_miner.portal_tables import copy_cited_by_papers, unlinked_publication_rows  # noqa: E402
+from synapse_miner.portal_tables import (  # noqa: E402
+    CITED_COLUMNS, cited_study_changes, sync_cited_by_papers, unlinked_publication_rows,
+)
 
 
 def _cited_by_table(rows):
@@ -383,7 +385,8 @@ def test_cited_by_papers_are_listed_without_study_links():
     rows = unlinked_publication_rows(CITED, PUBLICATIONS)
     assert list(rows["pmid"]) == ["PMID:38136356", "PMID:39857962"]
     assert all(ids == [] for ids in rows["studyId"]) and all(ids == [] for ids in rows["studyName"])
-    assert list(rows["publicationType"]) == ["secondary", "secondary"]
+    # publicationType describes the row's own studies; the citation stays in Cited By
+    assert all(t is None for t in rows["publicationType"])
     assert rows.iloc[0]["author"] == ["Jane Doe"]
     # Not the cited studies' funders, and not empty (which takes the column default)
     assert all(f == ["Not Applicable (External Study)"] for f in rows["fundingAgency"])
@@ -392,29 +395,92 @@ def test_cited_by_papers_are_listed_without_study_links():
     assert upload.iloc[0]["studyId"] == "[]" and upload.iloc[0]["author"] == '["Jane Doe"]'
 
 
-def test_copy_cited_by_papers_appends_once_with_snapshots(monkeypatch):
+def test_sync_cited_by_papers_appends_then_sets_cited_studies_with_snapshots(monkeypatch):
     monkeypatch.setattr("synapseclient.Table", lambda table_id, df: ("table", table_id, list(df.columns)))
+    monkeypatch.setattr("synapseclient.PartialRowset.from_mapping", lambda changes, fresh: ("partial", changes))
+    publications = PUBLICATIONS.assign(ROW_ID=[1, 2], studyId=[[], ["syn11638893"]], publicationType=[None, "primary"],
+                                       citedStudyId=[[], []], citedStudyFunder=[[], []])
+
     class Syn(FakeSyn):
         def tableQuery(self, sql):
             self.calls.append(("query", sql))
-            return FakeQuery(CITED if "syn78484103" in sql else PUBLICATIONS)
+            return FakeQuery(CITED if "syn78484103" in sql else publications)
+
+        def getTableColumns(self, table_id):
+            return [{"name": c} for c in PUBLICATION_COLUMNS + CITED_COLUMNS]
 
     syn = Syn()
-    rows = copy_cited_by_papers(syn, "syn16857542", "syn78484103", "test", dry_run=True)
+    rows, changes = sync_cited_by_papers(syn, "syn16857542", "syn78484103", STUDIES, "test", dry_run=True)
     assert len(rows) == 2 and not any(c[0] in ("store", "snapshot") for c in syn.calls)
-    copy_cited_by_papers(syn, "syn16857542", "syn78484103", "test")
-    assert [c[0] for c in syn.calls if c[0] != "query"] == ["snapshot", "store", "snapshot"]
-    assert next(c[1] for c in syn.calls if c[0] == "store") == ("table", "syn16857542", PUBLICATION_COLUMNS)
+    # Row 1 is paper C by DOI (CITED's last row)
+    assert changes == {1: {"citedStudyId": ["syn4939874"]}}
+    sync_cited_by_papers(syn, "syn16857542", "syn78484103", STUDIES, "test")
+    assert [c[0] for c in syn.calls if c[0] != "query"] == ["snapshot", "store", "snapshot"] * 2
+    stores = [c[1] for c in syn.calls if c[0] == "store"]
+    assert stores[0] == ("table", "syn16857542", PUBLICATION_COLUMNS)
+    assert stores[1] == ("partial", changes)
+
+
+def test_sync_cited_by_papers_without_the_columns_writes_no_changes(monkeypatch):
+    monkeypatch.setattr("synapseclient.Table", lambda table_id, df: ("table", table_id, list(df.columns)))
+    publications = PUBLICATIONS.assign(ROW_ID=[1, 2], studyId=[[], []], publicationType=[None, None])
+
+    class Syn(FakeSyn):
+        def tableQuery(self, sql):
+            return FakeQuery(CITED if "syn78484103" in sql else publications)
+
+        def getTableColumns(self, table_id):
+            return [{"name": c} for c in PUBLICATION_COLUMNS]
+
+    syn = Syn()
+    _, changes = sync_cited_by_papers(syn, "syn16857542", "syn78484103", STUDIES, "test")
+    assert changes and [c[0] for c in syn.calls] == ["snapshot", "store", "snapshot"]
 
 
 def test_primary_study_joining_an_unlinked_cited_by_row_makes_it_primary():
     rows = build_primary(pd.DataFrame([_row("syn11638893", "primary")]), STUDIES)
-    target = _target([[9, "PMID:33591953", None, [], [], ["Not Applicable (External Study)"], "secondary"]])
+    target = _target([[9, "PMID:33591953", None, [], [], ["Not Applicable (External Study)"], None]])
     new, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=False)
     assert new.empty
     assert merges[9]["studyId"] == ["syn11638893"] and merges[9]["publicationType"] == "primary"
     assert merges[9]["fundingAgency"] == ["NTAP", "NFRI"]
+    # The primary study's disease focus and manifestation replace the cited studies'
+    assert merges[9]["diseaseFocus"] == "Neurofibromatosis type 1" and merges[9]["manifestation"] == ["MPNST"]
     # A curated row with no publicationType keeps it
     target = _target([[9, "PMID:33591953", None, [], [], ["NTAP"], None]])
     _, merges = plan_writes(rows, target, existing=pair_keys(target), match_relationship=False)
     assert "publicationType" not in merges[9]
+
+
+# The publications table lists the portal studies each paper cites (from Cited By)
+def _publications(rows):
+    return pd.DataFrame(rows, columns=["ROW_ID", "pmid", "doi", "studyId", "publicationType",
+                                       "citedStudyId", "citedStudyFunder"])
+
+
+def test_cited_studies_come_from_every_cited_by_row_of_the_paper():
+    cited_by = pd.DataFrame([
+        # DLK1 paper: primary for syn63944395, reuses JHU Biobank data
+        ["PMID:40063513", "https://doi.org/10.1158/x", '["syn4939902"]', "secondary"],
+        # One paper under two relationships, matched by DOI
+        [None, "https://doi.org/10.3390/Y", '["syn4939902"]', "secondary"],
+        ["PMID:7", "https://doi.org/10.3390/y", '["syn11638893"]', "mention"],
+    ], columns=["pmid", "doi", "studyId", "publicationType"])
+    publications = _publications([
+        [1, "PMID:40063513", None, ["syn63944395"], "primary", None, None],
+        [2, None, "https://doi.org/10.3390/y", [], "secondary", None, None],
+        # Already right
+        [3, "PMID:1", None, ["syn4939902"], None, [], []],
+        # A paper split over two rows lists its cited studies once, on the lower ROW_ID
+        [5, "PMID:40063513", None, ["syn1"], "primary", ["syn4939902"], ["NTAP"]],
+    ])
+    changes = cited_study_changes(publications, cited_by, STUDIES)
+    assert changes[1] == {"citedStudyId": ["syn4939902"], "citedStudyFunder": ["NTAP"]}
+    # A row with no studies of its own loses the citation's publicationType
+    assert changes[2] == {"citedStudyId": ["syn4939902", "syn11638893"], "citedStudyFunder": ["NTAP", "NFRI"],
+                          "publicationType": None}
+    assert 3 not in changes
+    assert changes[5] == {"citedStudyId": [], "citedStudyFunder": []}
+    # A study dropped from Cited By is dropped here too
+    stale = _publications([[4, "PMID:9", None, [], None, ["syn4939902"], ["NTAP"]]])
+    assert cited_study_changes(stale, cited_by, STUDIES) == {4: {"citedStudyId": [], "citedStudyFunder": []}}

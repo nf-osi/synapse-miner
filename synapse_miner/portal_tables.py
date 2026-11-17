@@ -5,11 +5,14 @@ Add classified papers to the NF Data Portal publication tables.
   secondary / review / mention pairs   -> Portal - Cited By (syn78484103)
   unclear pairs                        -> neither; they wait for a human look
 
-Both tables share the publications table's columns, so study pages show
-them with the same publication cards filtered on studyId; Cited By adds a
-few columns at the end. Cited By papers are also listed in the publications
-table, without study links, since they are not outputs of a portal study
-(see copy_cited_by_papers). Rows are one per (paper, study) and are only ever
+The publications table has one row per paper and is what the portal shows,
+on the Publications page and on study pages: a study's Publications section
+lists papers whose studyId has it, and its Cited By section papers whose
+citedStudyId has it. Every Cited By paper is listed there too, without study
+links unless it is primary for a portal study, with citedStudyId and
+citedStudyFunder giving the studies it cites (see sync_cited_by_papers). The
+Cited By table holds the per-pair evidence behind those links: which studies
+each paper cites, how (publicationType), how sure, and why. Rows are one per (paper, study) and are only ever
 appended: a pair already in either table is skipped, so hand edits and
 curated rows are never changed, and every write is snapshotted before and
 after (see utils/synapse_safety.py).
@@ -71,7 +74,17 @@ CITED_BY_SCHEMA = [
 CITED_BY_COLUMNS = [c["name"] for c in CITED_BY_SCHEMA]
 # The publications table (syn16857542) has the first 12 columns
 PUBLICATION_COLUMNS = CITED_BY_COLUMNS[:12]
-_LIMITS = {c["name"]: c for c in CITED_BY_SCHEMA}
+# Then these, giving the portal studies each paper cites (from Cited By)
+# and those studies' funders. Entity IDs, so cards show each study's name
+# linked to its project; study pages filter with HAS (HAS_LIKE does not match
+# entity-ID lists)
+CITED_COLUMNS_SCHEMA = [
+    {"name": "citedStudyId", "columnType": "ENTITYID_LIST", "maximumListLength": 25, "facetType": "enumeration"},
+    {"name": "citedStudyFunder", "columnType": "STRING_LIST", "maximumSize": 50, "maximumListLength": 15,
+     "facetType": "enumeration"},
+]
+CITED_COLUMNS = [c["name"] for c in CITED_COLUMNS_SCHEMA]
+_LIMITS = {c["name"]: c for c in CITED_BY_SCHEMA + CITED_COLUMNS_SCHEMA}
 
 
 def _missing(value) -> bool:
@@ -306,11 +319,17 @@ def plan_writes(rows: pd.DataFrame, target: pd.DataFrame, existing: Set[Tuple[st
                 merged["fundingAgency"] = _union([funders, row.fundingAgency],
                                                   _LIMITS["fundingAgency"]["maximumListLength"])
                 merged["added"] += take
-                # A Cited By paper listed without studies becomes primary
-                # once a study's primary pair joins its row
+                # A Cited By paper listed without studies (placeholder funder)
+                # becomes primary once a study's primary pair joins its row,
+                # and takes that study's disease focus and manifestation over
+                # the cited studies' ones it was listed with
                 if (not match_relationship and row.publicationType in PRIMARY_RELATIONSHIPS
-                        and getattr(current, "publicationType", None) in CITED_BY_RELATIONSHIPS):
+                        and EXTERNAL_FUNDING in list(current.fundingAgency)
+                        and not merged.get("_had_studies")):
                     merged["publicationType"] = row.publicationType
+                    merged["diseaseFocus"] = row.diseaseFocus
+                    merged["manifestation"] = list(row.manifestation)
+                merged["_had_studies"] = True
                 merges[row_id] = merged
                 studies = studies[len(take):]
             if not studies:
@@ -333,10 +352,12 @@ def apply_merges(syn, table_id: str, merges: Dict[int, Dict], action: str) -> in
     if not merges:
         return 0
     from synapseclient import PartialRowset
-    changes = {row_id: {k: v for k, v in m.items() if k != "added"} for row_id, m in merges.items()}
+    changes = {row_id: {k: v for k, v in m.items() if k not in ("added", "_had_studies")}
+               for row_id, m in merges.items()}
     ids = ",".join(str(i) for i in changes)
     columns = ["studyId", "studyName", "fundingAgency"]
-    columns += [c for c in ("publicationType",) if any(c in m for m in changes.values())]
+    columns += [c for c in ("publicationType", "diseaseFocus", "manifestation")
+                if any(c in m for m in changes.values())]
     with snapshots_around(syn, table_id, action):
         fresh = syn.tableQuery(f"SELECT {', '.join(columns)} FROM {table_id} WHERE ROW_ID IN ({ids})")
         syn.store(PartialRowset.from_mapping(changes, fresh))
@@ -420,9 +441,12 @@ def unlinked_publication_rows(cited_by: pd.DataFrame, publications: pd.DataFrame
     study links (studyId and studyName empty): they are not outputs of a
     portal study. A paper is skipped when any publications-table row already
     has its PMID or DOI. A paper in Cited By under several relationships
-    gets one row, with the first of secondary, review, mention. Disease focus
-    and manifestation are copied; fundingAgency is EXTERNAL_FUNDING, since
-    Cited By's funders are the cited studies' funders, not the paper's.
+    gets one row. publicationType is left empty: it describes the row's own
+    studies, and how the paper cites portal studies stays in Cited By.
+    Disease focus and manifestation are copied, from its secondary row
+    first, as the best guess until a primary study joins the row;
+    fundingAgency is EXTERNAL_FUNDING, since Cited By's funders are the
+    cited studies' funders, not the paper's.
 
     Args:
         cited_by: Cited By rows (any of CITED_BY_COLUMNS)
@@ -446,28 +470,119 @@ def unlinked_publication_rows(cited_by: pd.DataFrame, publications: pd.DataFrame
         for spec in CITED_BY_SCHEMA:
             if spec["columnType"].endswith("_LIST"):
                 out[spec["name"]] = _as_list(out[spec["name"]])
-        out.update({"studyId": [], "studyName": [], "fundingAgency": [EXTERNAL_FUNDING]})
+        out.update({"studyId": [], "studyName": [], "fundingAgency": [EXTERNAL_FUNDING], "publicationType": None})
         rows.append(out)
     df = pd.DataFrame(rows, columns=CITED_BY_COLUMNS)
     df["year"] = pd.to_numeric(df["year"], errors="coerce").astype("Int64")
     return df
 
 
-def copy_cited_by_papers(syn, publications_table: str, cited_by_table: str, action: str,
-                         dry_run: bool = False) -> pd.DataFrame:
+def cited_study_changes(publications: pd.DataFrame, cited_by: pd.DataFrame,
+                        studies: Dict[str, Dict]) -> Dict[int, Dict]:
     """
-    Append Cited By papers missing from the publications table to it, without study links.
+    {ROW_ID: {column: value}} giving publications-table rows the studies their papers cite.
+
+    citedStudyId is every study the paper's Cited By rows list, under any
+    relationship, and citedStudyFunder those studies' funders. Both are
+    recomputed from Cited By each time, so a study removed there is removed
+    here too. A paper split over several rows (more than 5 own studies)
+    lists them on its lowest ROW_ID only, so its card shows once on a
+    study page. A row with no studies of its own loses a secondary, review
+    or mention publicationType: that describes its citations, kept in Cited
+    By. Rows already matching are left out.
+
+    Args:
+        publications: Publications-table rows (ROW_ID, pmid, doi, studyId,
+            publicationType, and the cited columns when the table has them)
+        cited_by: Cited By rows (pmid, doi, studyId)
+        studies: Output of study_resolver.load_studies
+    """
+    cited: Dict[str, List[str]] = {}
+    for row in cited_by.itertuples(index=False):
+        ids = _paper_ids(row.pmid, row.doi)
+        if not ids:
+            continue
+        entry = next((cited[k] for k in ids if k in cited), [])
+        entry[:] = _union([entry, _as_list(row.studyId)], 1000)
+        for k in ids:
+            cited[k] = entry
+    changes, seen = {}, set()
+    ordered = publications.assign(row_number=publications["ROW_ID"].astype(int)).sort_values("row_number")
+    for row in ordered.itertuples(index=False):
+        ids = _paper_ids(row.pmid, row.doi)
+        first = not (ids & seen)
+        seen |= ids
+        study_ids = next((cited[k] for k in ids if k in cited), []) if first else []
+        funders = _union([studies.get(s, {}).get("funding_agency", []) for s in study_ids], 1000)
+        target = {"citedStudyId": study_ids[:_LIMITS["citedStudyId"]["maximumListLength"]],
+                  "citedStudyFunder": _fit_list("citedStudyFunder", funders)}
+        change = {c: v for c, v in target.items() if v != _as_list(getattr(row, c, None))}
+        if not _as_list(row.studyId) and getattr(row, "publicationType", None) in CITED_BY_RELATIONSHIPS:
+            change["publicationType"] = None
+        if change:
+            changes[int(row.row_number)] = change
+    return changes
+
+
+def _paper_ids(pmid, doi) -> Set[str]:
+    return {k for k in (f"pmid:{_pmid_digits(pmid)}", f"doi:{_doi_key(doi)}") if k not in ("pmid:", "doi:")}
+
+
+def add_cited_columns(syn, publications_table: str, action: str) -> List[str]:
+    """Add the cited-study columns the publications table lacks, snapshotted. Returns their names."""
+    from synapseclient import Column
+    have = {c["name"] for c in syn.getTableColumns(publications_table)}
+    new = [spec for spec in CITED_COLUMNS_SCHEMA if spec["name"] not in have]
+    if not new:
+        return []
+    with snapshots_around(syn, publications_table, action):
+        schema = syn.get(publications_table, downloadFile=False)
+        for spec in new:
+            schema.addColumn(syn.store(Column(**spec)))
+        syn.store(schema)
+    logger.info(f"Added {', '.join(s['name'] for s in new)} to {publications_table}")
+    return [s["name"] for s in new]
+
+
+def sync_cited_by_papers(syn, publications_table: str, cited_by_table: str, studies: Dict[str, Dict],
+                         action: str, dry_run: bool = False) -> Tuple[pd.DataFrame, Dict[int, Dict]]:
+    """
+    Bring the publications table in line with Cited By, snapshotted.
+
+    Appends Cited By papers it lacks, without study links (see
+    unlinked_publication_rows), then sets every row's citedStudyId and
+    citedStudyFunder (see cited_study_changes). Without the cited columns
+    (see add_cited_columns) the changes are worked out but not written.
 
     Returns:
-        The rows appended (or that would be, on a dry run)
+        (rows appended, {ROW_ID: change}), or that would be on a dry run;
+        on a dry run, papers not appended yet are not in the changes
     """
+    from synapseclient import PartialRowset
     cited_by = syn.tableQuery(f"SELECT * FROM {cited_by_table}").asDataFrame(rowIdAndVersionInIndex=False)
     publications = syn.tableQuery(f"SELECT pmid, doi FROM {publications_table}").asDataFrame()
     rows = unlinked_publication_rows(cited_by, publications)
     logger.info(f"{len(rows)} Cited By papers are not in {publications_table} yet")
     if not dry_run:
         append_rows(syn, publications_table, rows, PUBLICATION_COLUMNS, action)
-    return rows
+
+    have = {c["name"] for c in syn.getTableColumns(publications_table)}
+    columns = ["pmid", "doi", "studyId", "publicationType"] + [c for c in CITED_COLUMNS if c in have]
+    current = syn.tableQuery(f"SELECT {', '.join(columns)} FROM {publications_table}") \
+                 .asDataFrame(rowIdAndVersionInIndex=False)
+    changes = cited_study_changes(current, cited_by, studies)
+    logger.info(f"{len(changes)} {publications_table} rows get new cited studies")
+    missing = [c for c in CITED_COLUMNS if c not in have]
+    if missing:
+        logger.warning(f"{publications_table} has no {', '.join(missing)} column; not setting cited studies "
+                       "(add them with sync-cited-by --add-columns)")
+    elif changes and not dry_run:
+        ids = ",".join(str(i) for i in changes)
+        names = sorted({c for change in changes.values() for c in change})
+        with snapshots_around(syn, publications_table, action):
+            fresh = syn.tableQuery(f"SELECT {', '.join(names)} FROM {publications_table} WHERE ROW_ID IN ({ids})")
+            syn.store(PartialRowset.from_mapping(changes, fresh))
+    return rows, changes
 
 
 def create_cited_by_table(syn, parent_id: str, name: str = "Portal - Cited By") -> str:

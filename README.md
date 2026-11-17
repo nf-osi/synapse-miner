@@ -127,7 +127,7 @@ Each output row is one (paper, study) pair with the label, a confidence (`high`/
 
 #### Adding papers to the portal tables
 
-`classify` turns labelled pairs into rows in the portal publications table's format, one row per (paper, study):
+`classify` turns labelled pairs into rows, one row per paper:
 
 | Relationship | Table | Rows added |
 |--------------|-------|------------|
@@ -135,12 +135,19 @@ Each output row is one (paper, study) pair with the label, a confidence (`high`/
 | `secondary`, `review`, `mention` | Cited By ([syn78484103](https://www.synapse.org/Synapse/syn78484103)) | all; `publicationType` holds the relationship |
 | `unclear` | neither | left for a human look (in `classified_publications.csv`) |
 
-A paper that is primary for one study and secondary for another gets a row in each table, each under its own study. Both tables share the publications table's columns, so study pages show them with the same publication cards filtered on `studyId`; Cited By adds `pmcid`, `isPreprint`, `confidence`, `citedSynapseIds` and `evidence` at the end.
+**The publications table is what the portal shows**, one row per paper, describing the paper itself. Its `studyId`, `studyName`, `fundingAgency`, `diseaseFocus` and `manifestation` come from the studies it is primary for, and `publicationType` is `primary` (or empty on older rows). Two more columns list the portal studies the paper cites:
 
-Every Cited By paper is also listed in the publications table **without study links** (`studyId` and `studyName` empty, `fundingAgency` "Not Applicable (External Study)", `publicationType` secondary/review/mention), since it is not an output of a portal study. Disease focus and manifestation are copied from Cited By; funders are not, since they are the cited studies' funders (and an empty value would take the column default). The weekly run and `add-reviewed` add these rows for new Cited By papers; a paper already in the publications table is left as it is. If a study's primary pair for that paper is added later, the study joins the row, its `publicationType` becomes `primary` and its funders replace the placeholder. To add any missing ones by hand:
+- `citedStudyId` (entity-ID list): every study the paper reuses, reviews or mentions, from Cited By. A study page's Cited By section lists papers with `citedStudyId HAS ('<study>')`.
+- `citedStudyFunder`: those studies' funders, for funders to find papers citing their studies.
+
+**Cited By is the evidence behind `citedStudyId`**: one row per paper and relationship, with the cited studies in `studyId`/`studyName`, their funders, and `pmcid`, `isPreprint`, `confidence`, `citedSynapseIds` and `evidence`. How a paper cites each study (secondary, review, mention) is kept only here. A paper primary for one study and secondary for another has its publications row under the first and a Cited By row for the second.
+
+Every Cited By paper is in the publications table. One with no primary portal study is listed **without study links** (`studyId` and `studyName` empty, `fundingAgency` "Not Applicable (External Study)", `publicationType` empty); its disease focus and manifestation are copied from Cited By as a best guess. If a study's primary pair for that paper is added later, the study joins the row, `publicationType` becomes `primary`, and the study's funders, disease focus and manifestation replace the placeholders.
+
+The weekly run and `add-reviewed` keep the publications table in line with Cited By after every write: they add missing papers and recompute `citedStudyId` and `citedStudyFunder` from Cited By, so a study removed from a Cited By row is removed there too. After editing Cited By by hand, or to add the two columns to a table without them, run:
 
 ```bash
-synapse-miner copy-cited-by --dry-run   # drop --dry-run to write
+synapse-miner sync-cited-by --dry-run   # drop --dry-run to write; add --add-columns the first time
 ```
 
 Rows are only ever **appended**: a (paper, study) pair already in either table (matched by PMID or DOI) is skipped, so curated rows and hand edits are never changed and nothing is deleted.
