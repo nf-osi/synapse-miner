@@ -2,9 +2,9 @@
 <database>
   <name>Sage Bionetworks Synapse</name>
   <description>Datasets available via Synapse, the Sage Bionetworks data sharing platform</description>
-  <release>2026-11-10</release>
-  <release_date>2026-11-10</release_date>
-  <entry_count>2667</entry_count>
+  <release>2026-11-17</release>
+  <release_date>2026-11-17</release_date>
+  <entry_count>2677</entry_count>
   <entries>
     <entry id="syn10003873">
       <name>pcawg-3.gene.fusions.V1.tsv.gz</name>
@@ -1900,6 +1900,7 @@
         <ref dbname="PMC" dbkey="PMC12611789" />
         <ref dbname="PMC" dbkey="PMC12622167" />
         <ref dbname="PMC" dbkey="PMC13121454" />
+        <ref dbname="PMC" dbkey="PMC13738548" />
         <ref dbname="PMC" dbkey="PMC9005347" />
       </cross_references>
       <additional_fields>
@@ -2539,6 +2540,7 @@
         <ref dbname="PMC" dbkey="PMC13272108" />
         <ref dbname="PMC" dbkey="PMC13457352" />
         <ref dbname="PMC" dbkey="PMC13692600" />
+        <ref dbname="PMC" dbkey="PMC13741792" />
         <ref dbname="PMC" dbkey="PMC6933917" />
         <ref dbname="PMC" dbkey="PMC7295244" />
         <ref dbname="PMC" dbkey="PMC7428328" />
@@ -3478,6 +3480,7 @@
         <ref dbname="PMC" dbkey="PMC12632456" />
         <ref dbname="PMC" dbkey="PMC13272108" />
         <ref dbname="PMC" dbkey="PMC13457352" />
+        <ref dbname="PMC" dbkey="PMC13741792" />
         <ref dbname="PMC" dbkey="PMC6557985" />
         <ref dbname="PMC" dbkey="PMC6980445" />
         <ref dbname="PMC" dbkey="PMC7093163" />
@@ -6910,6 +6913,8 @@
         <ref dbname="PMC" dbkey="PMC13569428" />
         <ref dbname="PMC" dbkey="PMC13619633" />
         <ref dbname="PMC" dbkey="PMC13694558" />
+        <ref dbname="PMC" dbkey="PMC13738548" />
+        <ref dbname="PMC" dbkey="PMC13748584" />
         <ref dbname="PMC" dbkey="PMC6865822" />
         <ref dbname="PMC" dbkey="PMC7422733" />
         <ref dbname="PMC" dbkey="PMC7610982" />
@@ -14510,6 +14515,20 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn23631984</field>
       </additional_fields>
     </entry>
+    <entry id="syn23633755">
+      <name>Epigenetics (Methylation Array)</name>
+      <description>Epigenetics (Methylation Array)</description>
+      <dates>
+        <date type="submission" value="2020-12-11" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13754617" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">AD Knowledge Portal</field>
+        <field name="full_dataset_link">https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn23633750</field>
+      </additional_fields>
+    </entry>
     <entry id="syn23633756">
       <name>raw</name>
       <description>raw</description>
@@ -14599,6 +14618,7 @@
         <ref dbname="PMC" dbkey="PMC12932393" />
         <ref dbname="PMC" dbkey="PMC13044590" />
         <ref dbname="PMC" dbkey="PMC13049930" />
+        <ref dbname="PMC" dbkey="PMC13747324" />
         <ref dbname="PMC" dbkey="PMC9789210" />
       </cross_references>
       <additional_fields>
@@ -15933,6 +15953,7 @@
         <ref dbname="PMC" dbkey="PMC13319415" />
         <ref dbname="PMC" dbkey="PMC13457352" />
         <ref dbname="PMC" dbkey="PMC13463313" />
+        <ref dbname="PMC" dbkey="PMC13738848" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -17533,6 +17554,9 @@
         <ref dbname="PMC" dbkey="PMC13581822" />
         <ref dbname="PMC" dbkey="PMC13668683" />
         <ref dbname="PMC" dbkey="PMC13733723" />
+        <ref dbname="PMC" dbkey="PMC13738395" />
+        <ref dbname="PMC" dbkey="PMC13738548" />
+        <ref dbname="PMC" dbkey="PMC13748584" />
       </cross_references>
       <additional_fields>
         <field name="repository">AD Knowledge Portal</field>
@@ -18848,6 +18872,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC13457352" />
+        <ref dbname="PMC" dbkey="PMC13738848" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -19015,6 +19040,7 @@
         <ref dbname="PMC" dbkey="PMC13346805" />
         <ref dbname="PMC" dbkey="PMC13685055" />
         <ref dbname="PMC" dbkey="PMC13728032" />
+        <ref dbname="PMC" dbkey="PMC13743461" />
         <ref dbname="PMC" dbkey="PMC8226229" />
         <ref dbname="PMC" dbkey="PMC8692161" />
         <ref dbname="PMC" dbkey="PMC8803430" />
@@ -20534,6 +20560,20 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn29855570</field>
       </additional_fields>
     </entry>
+    <entry id="syn29879329">
+      <name>snRNAseq + snATACseq - MTG</name>
+      <description>snRNAseq + snATACseq - MTG</description>
+      <dates>
+        <date type="submission" value="2022-04-29" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13748873" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">AD Knowledge Portal</field>
+        <field name="full_dataset_link">https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn26223298</field>
+      </additional_fields>
+    </entry>
     <entry id="syn30137113">
       <name>NG-A57433 other associated codes.R</name>
       <description>NG-A57433 other associated codes.R</description>
@@ -21377,6 +21417,8 @@
         <ref dbname="PMC" dbkey="PMC13528684" />
         <ref dbname="PMC" dbkey="PMC13544018" />
         <ref dbname="PMC" dbkey="PMC13569991" />
+        <ref dbname="PMC" dbkey="PMC13738548" />
+        <ref dbname="PMC" dbkey="PMC13754617" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -21590,6 +21632,7 @@
         <ref dbname="PMC" dbkey="PMC13262459" />
         <ref dbname="PMC" dbkey="PMC13577929" />
         <ref dbname="PMC" dbkey="PMC13594174" />
+        <ref dbname="PMC" dbkey="PMC13748584" />
         <ref dbname="PMC" dbkey="PMC6080491" />
         <ref dbname="PMC" dbkey="PMC6865822" />
         <ref dbname="PMC" dbkey="PMC7503200" />
@@ -22111,6 +22154,7 @@
         <ref dbname="PMC" dbkey="PMC13681227" />
         <ref dbname="PMC" dbkey="PMC13701836" />
         <ref dbname="PMC" dbkey="PMC13709883" />
+        <ref dbname="PMC" dbkey="PMC13760754" />
         <ref dbname="PMC" dbkey="PMC4972188" />
         <ref dbname="PMC" dbkey="PMC5869052" />
         <ref dbname="PMC" dbkey="PMC5973980" />
@@ -22654,6 +22698,7 @@
         <ref dbname="PMC" dbkey="PMC13625657" />
         <ref dbname="PMC" dbkey="PMC13664771" />
         <ref dbname="PMC" dbkey="PMC13668662" />
+        <ref dbname="PMC" dbkey="PMC13734201" />
         <ref dbname="PMC" dbkey="PMC5083142" />
         <ref dbname="PMC" dbkey="PMC5494142" />
         <ref dbname="PMC" dbkey="PMC5783180" />
@@ -24873,6 +24918,7 @@
         <ref dbname="PMC" dbkey="PMC12247699" />
         <ref dbname="PMC" dbkey="PMC12851831" />
         <ref dbname="PMC" dbkey="PMC13202612" />
+        <ref dbname="PMC" dbkey="PMC13760877" />
         <ref dbname="PMC" dbkey="PMC6080491" />
         <ref dbname="PMC" dbkey="PMC8024253" />
         <ref dbname="PMC" dbkey="PMC8471326" />
@@ -27243,6 +27289,20 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn51015750</field>
       </additional_fields>
     </entry>
+    <entry id="syn51031942">
+      <name>Massively parallel characterization of psychiatric disease associated and cell-type-specific regulatory elements in developing human cortex</name>
+      <description>Massively parallel characterization of psychiatric disease associated and cell-type-specific regulatory elements in developing human cortex</description>
+      <dates>
+        <date type="submission" value="2023-01-31" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13754577" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn51031942</field>
+      </additional_fields>
+    </entry>
     <entry id="syn51032009">
       <name>A single-cell atlas of cellular pathways and regulatory networks disrupted in autism  spectrum disorder</name>
       <description>A single-cell atlas of cellular pathways and regulatory networks disrupted in autism  spectrum disorder</description>
@@ -27608,6 +27668,7 @@
         <ref dbname="PMC" dbkey="PMC13408994" />
         <ref dbname="PMC" dbkey="PMC13495590" />
         <ref dbname="PMC" dbkey="PMC13504704" />
+        <ref dbname="PMC" dbkey="PMC13768592" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -28050,6 +28111,7 @@
         <ref dbname="PMC" dbkey="PMC13680930" />
         <ref dbname="PMC" dbkey="PMC13696731" />
         <ref dbname="PMC" dbkey="PMC13742271" />
+        <ref dbname="PMC" dbkey="PMC13754616" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -28723,6 +28785,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC10695556" />
+        <ref dbname="PMC" dbkey="PMC13748584" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -29293,6 +29356,9 @@
         <ref dbname="PMC" dbkey="PMC13499675" />
         <ref dbname="PMC" dbkey="PMC13619633" />
         <ref dbname="PMC" dbkey="PMC13692628" />
+        <ref dbname="PMC" dbkey="PMC13738548" />
+        <ref dbname="PMC" dbkey="PMC13748584" />
+        <ref dbname="PMC" dbkey="PMC13754597" />
       </cross_references>
       <additional_fields>
         <field name="repository">AD Knowledge Portal</field>
@@ -29370,6 +29436,8 @@
         <ref dbname="PMC" dbkey="PMC12992590" />
         <ref dbname="PMC" dbkey="PMC13570217" />
         <ref dbname="PMC" dbkey="PMC13577929" />
+        <ref dbname="PMC" dbkey="PMC13738548" />
+        <ref dbname="PMC" dbkey="PMC13748584" />
       </cross_references>
       <additional_fields>
         <field name="repository">AD Knowledge Portal</field>
@@ -29566,6 +29634,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn52361547</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn52362197">
+      <name>Sequencing Round 2</name>
+      <description>Sequencing Round 2</description>
+      <dates>
+        <date type="submission" value="2023-08-29" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13754597" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">AD Knowledge Portal</field>
+        <field name="full_dataset_link">https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn52293417</field>
       </additional_fields>
     </entry>
     <entry id="syn52363764">
@@ -31237,6 +31319,20 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn53470621</field>
       </additional_fields>
     </entry>
+    <entry id="syn53498818">
+      <name>PWAS-O with ROSMAP data</name>
+      <description>PWAS-O with ROSMAP data</description>
+      <dates>
+        <date type="submission" value="2024-02-12" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13734201" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn53498818</field>
+      </additional_fields>
+    </entry>
     <entry id="syn53502566">
       <name>CI deficiency PD stratification</name>
       <description>CI deficiency PD stratification</description>
@@ -31635,6 +31731,7 @@
         <ref dbname="PMC" dbkey="PMC13299955" />
         <ref dbname="PMC" dbkey="PMC13393873" />
         <ref dbname="PMC" dbkey="PMC13522792" />
+        <ref dbname="PMC" dbkey="PMC13740306" />
       </cross_references>
       <additional_fields>
         <field name="repository">Synapse</field>
@@ -33428,6 +33525,22 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn60239970</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn60245188">
+      <name>Integrative single-nucleus multi-omics analysis in Parkinson's disease brains</name>
+      <description>Integrative single-nucleus multi-omics analysis in Parkinson's disease brains</description>
+      <dates>
+        <date type="submission" value="2024-06-03" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC11218415" />
+        <ref dbname="PMC" dbkey="PMC12237611" />
+        <ref dbname="PMC" dbkey="PMC12632898" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn60245188</field>
       </additional_fields>
     </entry>
     <entry id="syn6035832">
@@ -35406,6 +35519,20 @@
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn64964787</field>
       </additional_fields>
     </entry>
+    <entry id="syn65460946">
+      <name>Oral immunotherapy suppresses peripheral blood transcriptomic response to peanut in peanut allergy</name>
+      <description>Oral immunotherapy suppresses peripheral blood transcriptomic response to peanut in peanut allergy</description>
+      <dates>
+        <date type="submission" value="2025-03-12" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC12900254" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn65460946</field>
+      </additional_fields>
+    </entry>
     <entry id="syn65461849">
       <name>Emory CSF Subtyping</name>
       <description>Emory CSF Subtyping</description>
@@ -36037,6 +36164,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12573303" />
+        <ref dbname="PMC" dbkey="PMC13763844" />
       </cross_references>
       <additional_fields>
         <field name="repository">AD Knowledge Portal</field>
@@ -36051,6 +36179,7 @@
       </dates>
       <cross_references>
         <ref dbname="PMC" dbkey="PMC12573303" />
+        <ref dbname="PMC" dbkey="PMC13763844" />
       </cross_references>
       <additional_fields>
         <field name="repository">AD Knowledge Portal</field>
@@ -36182,6 +36311,20 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn66400203</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn66400980">
+      <name>PDBP CSF NULISA Dataset</name>
+      <description>PDBP CSF NULISA Dataset</description>
+      <dates>
+        <date type="submission" value="2025-05-05" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC12259125" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn66400980</field>
       </additional_fields>
     </entry>
     <entry id="syn66477498">
@@ -38681,6 +38824,7 @@
         <ref dbname="PMC" dbkey="PMC11950204" />
         <ref dbname="PMC" dbkey="PMC12996523" />
         <ref dbname="PMC" dbkey="PMC13202612" />
+        <ref dbname="PMC" dbkey="PMC13760877" />
         <ref dbname="PMC" dbkey="PMC7979890" />
         <ref dbname="PMC" dbkey="PMC8471326" />
         <ref dbname="PMC" dbkey="PMC8476497" />
@@ -39264,6 +39408,34 @@
       <additional_fields>
         <field name="repository">Synapse</field>
         <field name="full_dataset_link">https://www.synapse.org/Synapse/syn7596712</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn76308124">
+      <name>Glycoflow project - FCS flow cytometry data</name>
+      <description>Glycoflow project - FCS flow cytometry data</description>
+      <dates>
+        <date type="submission" value="2026-07-15" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13760994" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn76308124</field>
+      </additional_fields>
+    </entry>
+    <entry id="syn76908324">
+      <name>MSB-2026-13666</name>
+      <description>MSB-2026-13666</description>
+      <dates>
+        <date type="submission" value="2026-08-15" />
+      </dates>
+      <cross_references>
+        <ref dbname="PMC" dbkey="PMC13639077" />
+      </cross_references>
+      <additional_fields>
+        <field name="repository">Synapse</field>
+        <field name="full_dataset_link">https://www.synapse.org/Synapse/syn76908324</field>
       </additional_fields>
     </entry>
     <entry id="syn77214713">
